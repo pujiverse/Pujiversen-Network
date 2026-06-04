@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PUJIVERSE — Network Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #07070f;
+      color: #e8e8f8;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    /* cosmic bg */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 20% 10%, oklch(0.25 0.1 280 / 0.35) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 80%, oklch(0.2 0.1 320 / 0.25) 0%, transparent 60%),
+        radial-gradient(ellipse 40% 60% at 50% 50%, oklch(0.15 0.06 260 / 0.2) 0%, transparent 70%);
+      z-index: 0;
+      pointer-events: none;
+    }
+    input::placeholder { color: rgba(255,255,255,0.25); }
+    textarea::placeholder { color: rgba(255,255,255,0.25); }
+    input, textarea, select { color-scheme: dark; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+    @keyframes twinkle {
+      from { opacity: 0.1; transform: scale(0.8); }
+      to   { opacity: 0.8; transform: scale(1.2); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    #root { position: relative; z-index: 1; }
+  </style>
+
+  <!-- React + Babel -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+  <!-- Data -->
+  <script src="js/data.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Components -->
+  <script type="text/babel" src="components/PublicView.jsx"></script>
+  <script type="text/babel" src="components/AdminPanel.jsx"></script>
+
+  <!-- App root -->
+  <script type="text/babel">
+    const { useState, useEffect, useCallback } = React;
+
+    function App() {
+      // ---- Auth state ----
+      const [view, setView]           = useState('public'); // 'public' | 'login' | 'admin'
+      const [clickCount, setClickCount] = useState(0);
+      const [clickTimer, setClickTimer] = useState(null);
+
+      // ---- Supabase ----
+      const DEFAULT_SB_URL = 'https://kykkbramlsychystjqba.supabase.co';
+      const DEFAULT_SB_KEY = 'sb_publishable_OcsI13nc3Xy5ak_BHAhJMA_lFhAf8EO';
+      const [supabaseUrl, setSupabaseUrl] = useState(() => localStorage.getItem('pv_sb_url') || DEFAULT_SB_URL);
+      const [supabaseKey, setSupabaseKey] = useState(() => localStorage.getItem('pv_sb_key') || DEFAULT_SB_KEY);
+      const [supabase, setSupabase]       = useState(null);
+
+      // ---- Data state (local + synced) ----
+      const [localChannels, setLocalChannels] = useState(() => {
+        try { const s = localStorage.getItem('pv_channels'); return s ? JSON.parse(s) : CHANNELS; }
+        catch { return CHANNELS; }
+      });
+      const [localVideos, setLocalVideos] = useState(() => {
+        try { const s = localStorage.getItem('pv_videos'); return s ? JSON.parse(s) : {}; }
+        catch { return {}; }
+      });
+      const [localSocial, setLocalSocial] = useState(() => {
+        try { const s = localStorage.getItem('pv_social'); return s ? JSON.parse(s) : SOCIAL_LINKS; }
+        catch { return SOCIAL_LINKS; }
+      });
+      const [localWebsites, setLocalWebsites] = useState(() => {
+        try { const s = localStorage.getItem('pv_websites'); return s ? JSON.parse(s) : []; }
+        catch { return []; }
+      });
+      const [localPosts, setLocalPosts] = useState(() => {
+        try { const s = localStorage.getItem('pv_posts'); return s ? JSON.parse(s) : []; }
+        catch { return []; }
+      });
+
+      // Persist channels
+      useEffect(() => { localStorage.setItem('pv_channels', JSON.stringify(localChannels)); }, [localChannels]);
+      useEffect(() => { localStorage.setItem('pv_social', JSON.stringify(localSocial)); }, [localSocial]);
+      useEffect(() => { localStorage.setItem('pv_websites', JSON.stringify(localWebsites)); }, [localWebsites]);
+      useEffect(() => { localStorage.setItem('pv_posts', JSON.stringify(localPosts)); }, [localPosts]);
+
+      // ---- Connect Supabase ----
+      const connectSupabase = useCallback(() => {
+        if (supabaseUrl && supabaseKey && window.supabase) {
+          try {
+            const client = window.supabase.createClient(supabaseUrl, supabaseKey);
+            setSupabase(client);
+            localStorage.setItem('pv_sb_url', supabaseUrl);
+            localStorage.setItem('pv_sb_key', supabaseKey);
+          } catch(e) { console.warn('Supabase connect failed', e); }
+        }
+      }, [supabaseUrl, supabaseKey]);
+
+      useEffect(() => { connectSupabase(); }, [connectSupabase]);
+
+      // ---- Secret triple-click on hero logo ----
+      const handleLogoClick = useCallback(() => {
+        const next = clickCount + 1;
+        setClickCount(next);
+        if (clickTimer) clearTimeout(clickTimer);
+        if (next >= 3) {
+          setClickCount(0);
+          setView('login');
+        } else {
+          const t = setTimeout(() => setClickCount(0), 1200);
+          setClickTimer(t);
+        }
+      }, [clickCount, clickTimer]);
+
+      // Attach triple-click to logo after render
+      useEffect(() => {
+        const el = document.getElementById('logo-click-target');
+        if (el) el.onclick = handleLogoClick;
+      });
+
+      return (
+        <>
+          {/* Starfield */}
+          {typeof StarField !== 'undefined' && <StarField />}
+
+          {view === 'login' && (
+            <LoginModal
+              onLogin={() => setView('admin')}
+              onClose={() => setView('public')}
+            />
+          )}
+
+          {(view === 'public' || view === 'login') && (
+            <PublicView
+              onAdminClick={() => setView('login')}
+              videos={localVideos}
+              social={localSocial}
+              websites={localWebsites}
+              posts={localPosts}
+            />
+          )}
+
+          {view === 'admin' && (
+            <AdminPanel
+              onBack={() => setView('public')}
+              supabase={supabase}
+              supabaseUrl={supabaseUrl}
+              supabaseKey={supabaseKey}
+              setSupabaseUrl={setSupabaseUrl}
+              setSupabaseKey={setSupabaseKey}
+              onConnectSupabase={connectSupabase}
+              localChannels={localChannels}
+              setLocalChannels={setLocalChannels}
+              localVideos={localVideos}
+              setLocalVideos={setLocalVideos}
+              localSocial={localSocial}
+              setLocalSocial={setLocalSocial}
+              localWebsites={localWebsites}
+              setLocalWebsites={setLocalWebsites}
+              localPosts={localPosts}
+              setLocalPosts={setLocalPosts}
+            />
+          )}
+        </>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

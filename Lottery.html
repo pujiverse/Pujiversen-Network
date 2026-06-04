@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PUJIVERSE LOTTERY — Live Draw System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', sans-serif; background: #07070f; color: #e8e8f8; min-height: 100vh; overflow-x: hidden; }
+    body::before {
+      content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse 80% 50% at 20% 10%, oklch(0.25 0.1 280 / 0.35) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 80%, oklch(0.2 0.1 320 / 0.25) 0%, transparent 60%);
+    }
+    #root { position: relative; z-index: 1; }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+    input, textarea, select { color-scheme: dark; }
+    input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.25); }
+
+    @keyframes twinkle { from { opacity:0.1; transform:scale(0.8); } to { opacity:0.8; transform:scale(1.2); } }
+    @keyframes pulse-glow {
+      0%,100% { text-shadow: 0 0 20px currentColor, 0 0 40px currentColor; }
+      50%      { text-shadow: 0 0 60px currentColor, 0 0 120px currentColor, 0 0 200px currentColor; }
+    }
+    @keyframes countdown-pop {
+      0%   { transform: scale(2.5); opacity: 0; }
+      20%  { transform: scale(1);   opacity: 1; }
+      80%  { transform: scale(1);   opacity: 1; }
+      100% { transform: scale(0.3); opacity: 0; }
+    }
+    @keyframes winner-explode {
+      0%   { transform: scale(0.3) rotate(-5deg); opacity: 0; filter: blur(20px); }
+      60%  { transform: scale(1.08) rotate(1deg); opacity: 1; filter: blur(0); }
+      80%  { transform: scale(0.97) rotate(-0.5deg); }
+      100% { transform: scale(1) rotate(0); opacity: 1; }
+    }
+    @keyframes spin-name {
+      0%   { transform: translateY(100%); opacity: 0; }
+      10%  { transform: translateY(0);    opacity: 1; }
+      90%  { transform: translateY(0);    opacity: 1; }
+      100% { transform: translateY(-100%); opacity: 0; }
+    }
+    @keyframes spotlight {
+      0%   { opacity: 0; transform: scaleX(0.2); }
+      100% { opacity: 1; transform: scaleX(1); }
+    }
+    @keyframes confetti-fall {
+      0%   { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+    }
+    @keyframes ring-expand {
+      0%   { transform: scale(0.5); opacity: 0.8; }
+      100% { transform: scale(2.5); opacity: 0; }
+    }
+    @keyframes intro-slide {
+      from { transform: translateY(30px); opacity: 0; }
+      to   { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes fadeInUp {
+      from { opacity:0; transform:translateY(16px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script src="js/data.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+function loadSubs(sno) {
+  try { return JSON.parse(localStorage.getItem('pv_lot_subs_' + sno) || '[]'); } catch { return []; }
+}
+function saveSubs(sno, arr) { localStorage.setItem('pv_lot_subs_' + sno, JSON.stringify(arr)); }
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem('pv_lot_history') || '[]'); } catch { return []; }
+}
+function saveHistory(arr) { localStorage.setItem('pv_lot_history', JSON.stringify(arr)); }
+// Admin flag — set by AdminPanel after successful login. Without it, subscriber editing UI is hidden.
+function isAdmin() { return localStorage.getItem('pv_is_admin') === '1'; }
+
+const CAT_COLORS_L = {
+  "Science & Technology":"#22d3ee","Entertainment":"#c084fc","Education":"#818cf8",
+  "Gaming":"#4ade80","Music":"#f472b6","Sports":"#fb923c","Film & Animation":"#f87171",
+  "Howto & Style":"#facc15","People & Blogs":"#a78bfa","Pets & Animals":"#34d399","Autos & Vehicles":"#fbbf24"
+};
+
+// ── Confetti canvas ────────────────────────────────────────────────────────
+function Confetti({ active }) {
+  const canvasRef = useRef(null);
+  const animRef   = useRef(null);
+  const particles = useRef([]);
+
+  useEffect(() => {
+    if (!active) { particles.current = []; return; }
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    const colors = ['#22d3ee','#c084fc','#f472b6','#facc15','#4ade80','#fb923c','#f0f0ff'];
+    for (let i = 0; i < 180; i++) {
+      particles.current.push({
+        x: Math.random() * canvas.width,
+        y: -20 - Math.random() * 200,
+        vx: (Math.random() - 0.5) * 4,
+        vy: 2 + Math.random() * 5,
+        rot: Math.random() * 360,
+        rotV: (Math.random() - 0.5) * 8,
+        w: 8 + Math.random() * 10,
+        h: 4 + Math.random() * 6,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        opacity: 1
+      });
+    }
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      particles.current.forEach(p => {
+        p.x += p.vx; p.y += p.vy; p.rot += p.rotV;
+        if (p.y > canvas.height + 20) { p.y = -20; p.opacity = Math.max(0, p.opacity - 0.005); }
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot * Math.PI / 180);
+        ctx.globalAlpha = p.opacity;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+        ctx.restore();
+      });
+      animRef.current = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+  }, [active]);
+
+  return <canvas ref={canvasRef} style={{ position:'fixed', inset:0, pointerEvents:'none', zIndex:9999 }} />;
+}
+
+// ── Stars ──────────────────────────────────────────────────────────────────
+function Stars() {
+  const stars = useMemo(() => Array.from({length:100}, (_,i) => ({
+    id:i, x:Math.random()*100, y:Math.random()*100,
+    s:Math.random()*2+0.4, o:Math.random()*0.5+0.1, d:Math.random()*4+2
+  })), []);
+  return (
+    <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:0,overflow:'hidden'}}>
+      {stars.map(s => (
+        <div key={s.id} style={{position:'absolute',left:`${s.x}%`,top:`${s.y}%`,
+          width:s.s,height:s.s,borderRadius:'50%',background:'white',opacity:s.o,
+          animation:`twinkle ${s.d}s ease-in-out infinite alternate`,
+          animationDelay:`${Math.random()*4}s`
+        }}/>
+      ))}
+    </div>
+  );
+}
+
+// ── Subscriber Manager Modal ───────────────────────────────────────────────
+function SubsManager({ channel, subs, setSubs, onClose }) {
+  const admin = isAdmin();
+  const [tab, setTab] = useState('list'); // list | paste | csv | manual
+  const [pasteText, setPasteText] = useState('');
+  const [manForm, setManForm] = useState({ name:'', handle:'', email:'', subscriberId:'', phone:'' });
+  const [csvFile, setCsvFile] = useState(null);
+  const [msg, setMsg] = useState('');
+
+  const showMsg = (m, ok=true) => { setMsg({text:m,ok}); setTimeout(()=>setMsg(''), 3000); };
+
+  const addFromPaste = () => {
+    const lines = pasteText.split('\n').map(l=>l.trim()).filter(Boolean);
+    const newSubs = lines.map(l => {
+      const parts = l.split(',').map(s=>s.trim());
+      return { id:uid(), name:parts[0]||l, handle:parts[1]||'', email:parts[2]||'', subscriberId:parts[3]||'', phone:parts[4]||'' };
+    });
+    const updated = [...subs, ...newSubs];
+    setSubs(updated); saveSubs(channel.sno, updated);
+    setPasteText('');
+    showMsg(`Added ${newSubs.length} subscribers`);
+  };
+
+  const addManual = () => {
+    if (!manForm.name.trim()) { showMsg('Name is required', false); return; }
+    const updated = [...subs, { id:uid(), ...manForm }];
+    setSubs(updated); saveSubs(channel.sno, updated);
+    setManForm({ name:'', handle:'', email:'', subscriberId:'', phone:'' });
+    showMsg('Subscriber added ✓');
+  };
+
+  const handleCSV = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const lines = ev.target.result.split('\n').map(l=>l.trim()).filter(Boolean);
+      const start = lines[0].toLowerCase().includes('name') ? 1 : 0;
+      const newSubs = lines.slice(start).map(l => {
+        const parts = l.split(',').map(s=>s.trim().replace(/^"|"$/g,''));
+        return { id:uid(), name:parts[0]||'', handle:parts[1]||'', email:parts[2]||'', subscriberId:parts[3]||'', phone:parts[4]||'' };
+      }).filter(s=>s.name);
+      const updated = [...subs, ...newSubs];
+      setSubs(updated); saveSubs(channel.sno, updated);
+      showMsg(`Imported ${newSubs.length} from CSV`);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const delSub = (id) => {
+    const updated = subs.filter(s=>s.id!==id);
+    setSubs(updated); saveSubs(channel.sno, updated);
+  };
+
+  const clearAll = () => {
+    if (!confirm(`Delete ALL ${subs.length} subscribers from ${channel.name}?`)) return;
+    setSubs([]); saveSubs(channel.sno, []);
+  };
+
+  const inputStyle = { padding:'9px 13px', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:10, color:'#e8e8f8', fontSize:13, outline:'none', width:'100%' };
+  const tabStyle = (t) => ({ padding:'7px 16px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:600, background: tab===t?'rgba(192,132,252,0.18)':'transparent', color: tab===t?'#c084fc':'rgba(255,255,255,0.45)', transition:'all 0.15s' });
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.88)',zIndex:5000,display:'flex',alignItems:'center',justifyContent:'center',padding:20,backdropFilter:'blur(10px)'}}>
+      <div style={{background:'#0e0e1a',border:'1px solid rgba(255,255,255,0.12)',borderRadius:24,width:'100%',maxWidth:720,maxHeight:'88vh',display:'flex',flexDirection:'column'}}>
+        {/* header */}
+        <div style={{padding:'24px 28px 0',flexShrink:0}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16}}>
+            <div>
+              <h2 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:20,fontWeight:800,color:'#f0f0f8',marginBottom:4}}>{channel.name}</h2>
+              <span style={{fontSize:13,color:'rgba(255,255,255,0.4)'}}>{subs.length} subscriber{subs.length!==1?'s':''} in list</span>
+            </div>
+            <div style={{display:'flex',gap:8,alignItems:'center'}}>
+              {msg && <span style={{fontSize:13,color:msg.ok?'#4ade80':'#f87171'}}>{msg.text}</span>}
+              <button onClick={onClose} style={{width:36,height:36,borderRadius:10,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)',color:'rgba(255,255,255,0.6)',cursor:'pointer',fontSize:18,display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:4,borderBottom:'1px solid rgba(255,255,255,0.08)',paddingBottom:0}}>
+            {(admin ? [['list','📋 List'],['paste','📝 Paste'],['csv','📁 CSV'],['manual','✏️ Manual']] : [['list','📋 List']]).map(([t,l])=>(
+              <button key={t} onClick={()=>setTab(t)} style={tabStyle(t)}>{l}</button>
+            ))}
+            {!admin && (
+              <span style={{marginLeft:'auto',padding:'6px 12px',borderRadius:8,fontSize:11,fontWeight:600,background:'rgba(192,132,252,0.12)',color:'#c084fc',border:'1px solid rgba(192,132,252,0.25)',display:'flex',alignItems:'center',gap:6}}>
+                👁 Read-only — admin only can edit
+              </span>
+            )}
+            {admin && subs.length>0 && <button onClick={clearAll} style={{marginLeft:'auto',padding:'7px 14px',borderRadius:8,border:'none',cursor:'pointer',fontSize:12,background:'rgba(239,68,68,0.12)',color:'#f87171'}}>Clear All</button>}
+          </div>
+        </div>
+
+        {/* content */}
+        <div style={{flex:1,overflowY:'auto',padding:'20px 28px 28px'}}>
+          {tab==='list' && (
+            subs.length===0
+              ? <div style={{textAlign:'center',padding:'48px 0',color:'rgba(255,255,255,0.3)'}}>
+                  <div style={{fontSize:36,marginBottom:12}}>👥</div>
+                  <div>{admin ? 'No subscribers yet — use Paste, CSV or Manual to add them' : 'No subscribers yet for this channel — admin will add them.'}</div>
+                </div>
+              : <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  {subs.map((s,i)=>(
+                    <div key={s.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 14px',background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:10}}>
+                      <div style={{width:28,height:28,borderRadius:8,background:'rgba(192,132,252,0.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#c084fc',flexShrink:0}}>{i+1}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:14,fontWeight:600,color:'#e8e8f8'}}>{s.name}</div>
+                        <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',display:'flex',gap:10,flexWrap:'wrap',marginTop:2}}>
+                          {s.handle && <span>{s.handle}</span>}
+                          {s.email && <span>{s.email}</span>}
+                          {s.phone && <span>{s.phone}</span>}
+                          {s.subscriberId && <span>ID: {s.subscriberId}</span>}
+                        </div>
+                      </div>
+                      {admin && <button onClick={()=>delSub(s.id)} style={{padding:'4px 10px',borderRadius:7,border:'none',background:'rgba(239,68,68,0.15)',color:'#f87171',cursor:'pointer',fontSize:12}}>×</button>}
+                    </div>
+                  ))}
+                </div>
+          )}
+
+          {tab==='paste' && (
+            <div style={{display:'flex',flexDirection:'column',gap:12}}>
+              <div style={{padding:'12px 14px',background:'rgba(34,211,238,0.06)',border:'1px solid rgba(34,211,238,0.2)',borderRadius:10,fontSize:13,color:'rgba(255,255,255,0.55)',lineHeight:1.7}}>
+                One entry per line. Format: <code style={{color:'#22d3ee'}}>Name, @handle, email, subscriberId, phone</code><br/>
+                Only <strong style={{color:'#f0f0f8'}}>Name</strong> is required — rest are optional.
+              </div>
+              <textarea value={pasteText} onChange={e=>setPasteText(e.target.value)} rows={12} placeholder={"John Doe, @johndoe, john@gmail.com, UCxxxxx, +91 9876543210\nJane Smith, @janesmith\nAlex Kumar"} style={{...inputStyle,resize:'vertical',lineHeight:1.7}}/>
+              <button onClick={addFromPaste} style={{padding:'10px 20px',background:'linear-gradient(135deg,#22d3ee,#c084fc)',border:'none',borderRadius:10,color:'#0a0a15',fontSize:14,fontWeight:700,cursor:'pointer'}}>+ Add {pasteText.split('\n').filter(l=>l.trim()).length} Subscribers</button>
+            </div>
+          )}
+
+          {tab==='csv' && (
+            <div style={{display:'flex',flexDirection:'column',gap:16,alignItems:'center',paddingTop:24}}>
+              <div style={{padding:'12px 14px',background:'rgba(34,211,238,0.06)',border:'1px solid rgba(34,211,238,0.2)',borderRadius:10,fontSize:13,color:'rgba(255,255,255,0.55)',width:'100%',lineHeight:1.7}}>
+                CSV columns (in order): <code style={{color:'#22d3ee'}}>name, handle, email, subscriberId, phone</code><br/>
+                First row can be headers — they'll be skipped automatically.
+              </div>
+              <label style={{display:'flex',flexDirection:'column',alignItems:'center',gap:12,padding:'48px',border:'2px dashed rgba(192,132,252,0.3)',borderRadius:16,cursor:'pointer',width:'100%',transition:'all 0.2s'}}
+                onMouseEnter={e=>e.currentTarget.style.borderColor='rgba(192,132,252,0.6)'}
+                onMouseLeave={e=>e.currentTarget.style.borderColor='rgba(192,132,252,0.3)'}>
+                <div style={{fontSize:40}}>📁</div>
+                <div style={{fontSize:16,fontWeight:600,color:'#c084fc'}}>Click to upload CSV</div>
+                <div style={{fontSize:13,color:'rgba(255,255,255,0.4)'}}>subscribers.csv</div>
+                <input type="file" accept=".csv,.txt" onChange={handleCSV} style={{display:'none'}}/>
+              </label>
+            </div>
+          )}
+
+          {tab==='manual' && (
+            <div style={{display:'flex',flexDirection:'column',gap:12}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                {[['name','Full Name *','John Doe'],['handle','YT Handle','@johndoe'],['email','Email','john@gmail.com'],['subscriberId','Subscriber ID','UCxxxxxx'],['phone','Phone','+91 9876543210']].map(([k,l,ph])=>(
+                  <div key={k} style={{display:'flex',flexDirection:'column',gap:5}}>
+                    <label style={{fontSize:11,fontWeight:600,color:'rgba(255,255,255,0.4)',textTransform:'uppercase',letterSpacing:1}}>{l}</label>
+                    <input value={manForm[k]} onChange={e=>setManForm({...manForm,[k]:e.target.value})} placeholder={ph} style={inputStyle}/>
+                  </div>
+                ))}
+              </div>
+              <button onClick={addManual} style={{padding:'10px 20px',background:'linear-gradient(135deg,#22d3ee,#c084fc)',border:'none',borderRadius:10,color:'#0a0a15',fontSize:14,fontWeight:700,cursor:'pointer',marginTop:4}}>+ Add Subscriber</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── History Modal ──────────────────────────────────────────────────────────
+function HistoryModal({ history, onClose }) {
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.88)',zIndex:5000,display:'flex',alignItems:'center',justifyContent:'center',padding:20,backdropFilter:'blur(10px)'}}>
+      <div style={{background:'#0e0e1a',border:'1px solid rgba(255,255,255,0.12)',borderRadius:24,width:'100%',maxWidth:680,maxHeight:'85vh',display:'flex',flexDirection:'column'}}>
+        <div style={{padding:'24px 28px 16px',flexShrink:0,borderBottom:'1px solid rgba(255,255,255,0.08)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <h2 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:20,fontWeight:800,color:'#f0f0f8',marginBottom:2}}>Draw History</h2>
+            <span style={{fontSize:13,color:'rgba(255,255,255,0.4)'}}>{history.length} past draws</span>
+          </div>
+          <button onClick={onClose} style={{width:36,height:36,borderRadius:10,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)',color:'rgba(255,255,255,0.6)',cursor:'pointer',fontSize:18,display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
+        </div>
+        <div style={{flex:1,overflowY:'auto',padding:'20px 28px'}}>
+          {history.length===0 ? (
+            <div style={{textAlign:'center',padding:'48px 0',color:'rgba(255,255,255,0.3)'}}>
+              <div style={{fontSize:36,marginBottom:12}}>🎰</div>
+              No draws yet — run your first lottery!
+            </div>
+          ) : [...history].reverse().map((h,i)=>(
+            <div key={i} style={{marginBottom:16,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:14,padding:'16px 18px'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
+                <div>
+                  <div style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:15,fontWeight:700,color:'#c084fc'}}>{h.channel}</div>
+                  <div style={{fontSize:12,color:'rgba(255,255,255,0.35)',marginTop:2}}>{h.date} · {h.poolSize} participants</div>
+                </div>
+                <span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:20,background:'rgba(74,222,128,0.15)',color:'#4ade80',border:'1px solid rgba(74,222,128,0.3)'}}>DRAW</span>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                {h.winners.map((w,j)=>(
+                  <div key={j} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:`rgba(${j===0?'250,204,21':'192,132,252'},0.08)`,borderRadius:10,border:`1px solid rgba(${j===0?'250,204,21':'192,132,252'},0.2)`}}>
+                    <span style={{fontSize:16}}>{j===0?'🥇':j===1?'🥈':'🥉'}</span>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:700,color:j===0?'#facc15':'#c084fc'}}>{w.name}</div>
+                      {w.handle && <div style={{fontSize:11,color:'rgba(255,255,255,0.35)'}}>{w.handle}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── DRAW SCREEN ────────────────────────────────────────────────────────────
+function DrawScreen({ channel, pool, winnerCount, onComplete, onCancel }) {
+  const [phase, setPhase]       = useState('intro');   // intro|countdown|spinning|reveal|done
+  const [cdNum, setCdNum]       = useState(3);
+  const [spinName, setSpinName] = useState('');
+  const [curWinner, setCurWinner] = useState(0);
+  const [winners, setWinners]   = useState([]);
+  const [showConf, setShowConf] = useState(false);
+  const [revealName, setRevealName] = useState(null);
+  const spinRef    = useRef(null);
+  const remainRef  = useRef([...pool]);
+
+  const accentColor = CAT_COLORS_L[channel.cat] || '#c084fc';
+
+  // INTRO → COUNTDOWN after 2.5s
+  useEffect(() => {
+    if (phase !== 'intro') return;
+    const t = setTimeout(() => setPhase('countdown'), 2800);
+    return () => clearTimeout(t);
+  }, [phase]);
+
+  // COUNTDOWN 3→2→1→SPINNING
+  useEffect(() => {
+    if (phase !== 'countdown') return;
+    if (cdNum <= 0) { setPhase('spinning'); return; }
+    const t = setTimeout(() => setCdNum(n => n - 1), 1000);
+    return () => clearTimeout(t);
+  }, [phase, cdNum]);
+
+  // SPINNING — rapid name cycling
+  useEffect(() => {
+    if (phase !== 'spinning') return;
+    let elapsed = 0;
+    const total = 4000;
+    const startInterval = 50;
+    let interval = startInterval;
+    const run = () => {
+      setSpinName(remainRef.current[Math.floor(Math.random() * remainRef.current.length)]?.name || '');
+      elapsed += interval;
+      const progress = elapsed / total;
+      // ease out: slow down in last 40%
+      if (progress > 0.6) interval = startInterval + (progress - 0.6) / 0.4 * 350;
+      if (elapsed < total) {
+        spinRef.current = setTimeout(run, interval);
+      } else {
+        setPhase('reveal');
+      }
+    };
+    spinRef.current = setTimeout(run, interval);
+    return () => { if (spinRef.current) clearTimeout(spinRef.current); };
+  }, [phase]);
+
+  // REVEAL — pick winner
+  useEffect(() => {
+    if (phase !== 'reveal') return;
+    const idx = Math.floor(Math.random() * remainRef.current.length);
+    const winner = remainRef.current[idx];
+    remainRef.current = remainRef.current.filter((_,i) => i !== idx);
+    setRevealName(winner);
+    setWinners(prev => [...prev, winner]);
+    setShowConf(true);
+    setTimeout(() => setShowConf(false), 4500);
+    setPhase('done');
+  }, [phase]);
+
+  // After reveal, show winner + option to draw next or finish
+  const drawNext = () => {
+    setCurWinner(n => n + 1);
+    setCdNum(3);
+    setRevealName(null);
+    setPhase('intro');
+  };
+  const finish = () => onComplete(winners);
+
+  const isLastWinner = curWinner >= winnerCount - 1;
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'#04040c',zIndex:4000,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+      <Confetti active={showConf} />
+
+      {/* Ambient glow */}
+      <div style={{position:'absolute',top:'30%',left:'50%',transform:'translate(-50%,-50%)',width:600,height:600,borderRadius:'50%',background:`radial-gradient(circle, ${accentColor}18 0%, transparent 70%)`,pointerEvents:'none'}}/>
+
+      {/* Top bar */}
+      <div style={{position:'absolute',top:0,left:0,right:0,padding:'20px 32px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <div>
+          <div style={{fontSize:11,fontWeight:700,letterSpacing:3,color:'rgba(255,255,255,0.3)',textTransform:'uppercase'}}>Pujiverse Lottery</div>
+          <div style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:18,fontWeight:800,color:accentColor,marginTop:2}}>{channel.name}</div>
+        </div>
+        <div style={{textAlign:'right'}}>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',textTransform:'uppercase',letterSpacing:2}}>Draw</div>
+          <div style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:18,fontWeight:800,color:'#f0f0f8'}}>{curWinner+1} / {winnerCount}</div>
+        </div>
+      </div>
+
+      {/* Channel + pool info */}
+      <div style={{position:'absolute',bottom:24,left:'50%',transform:'translateX(-50%)',display:'flex',gap:24,textAlign:'center'}}>
+        <div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',textTransform:'uppercase',letterSpacing:2}}>Pool</div>
+          <div style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:22,fontWeight:800,color:'#f0f0f8'}}>{pool.length}</div>
+        </div>
+        <div style={{width:1,background:'rgba(255,255,255,0.1)'}}/>
+        <div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',textTransform:'uppercase',letterSpacing:2}}>Handle</div>
+          <div style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:22,fontWeight:800,color:accentColor}}>{channel.handle}</div>
+        </div>
+        <div style={{width:1,background:'rgba(255,255,255,0.1)'}}/>
+        <div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',textTransform:'uppercase',letterSpacing:2}}>Status</div>
+          <div style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:22,fontWeight:800,color:'#4ade80'}}>LIVE</div>
+        </div>
+      </div>
+
+      {/* Cancel */}
+      {(phase==='intro' || phase==='done') && (
+        <button onClick={onCancel} style={{position:'absolute',top:24,right:32,padding:'7px 16px',borderRadius:10,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.05)',color:'rgba(255,255,255,0.4)',cursor:'pointer',fontSize:13}}>✕ Cancel</button>
+      )}
+
+      {/* ── INTRO PHASE ── */}
+      {phase === 'intro' && (
+        <div style={{textAlign:'center',animation:'intro-slide 0.6s ease'}}>
+          <div style={{fontSize:14,fontWeight:700,letterSpacing:4,color:'rgba(255,255,255,0.4)',textTransform:'uppercase',marginBottom:20}}>Lottery Draw · {new Date().toLocaleDateString()}</div>
+          <h1 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:'clamp(56px,8vw,100px)',fontWeight:900,margin:'0 0 16px',background:`linear-gradient(135deg, ${accentColor}, #f0f0f8)`,WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text'}}>
+            GET READY
+          </h1>
+          <div style={{fontSize:20,color:'rgba(255,255,255,0.5)',fontWeight:500}}>Winner {curWinner+1} of {winnerCount} — draw begins shortly...</div>
+          {/* Ring animations */}
+          {[0,1,2].map(i=>(
+            <div key={i} style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',width:200+i*120,height:200+i*120,borderRadius:'50%',border:`1px solid ${accentColor}${['44','2a','16'][i]}`,animation:`ring-expand 3s ${i*0.8}s ease-out infinite`}}/>
+          ))}
+        </div>
+      )}
+
+      {/* ── COUNTDOWN PHASE ── */}
+      {phase === 'countdown' && cdNum > 0 && (
+        <div key={cdNum} style={{textAlign:'center'}}>
+          <div style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:'clamp(140px,20vw,240px)',fontWeight:900,color:accentColor,lineHeight:1,animation:'countdown-pop 1s ease forwards',textShadow:`0 0 40px ${accentColor}, 0 0 80px ${accentColor}55`}}>{cdNum}</div>
+          <div style={{fontSize:18,color:'rgba(255,255,255,0.4)',letterSpacing:3}}>DRAWING IN...</div>
+        </div>
+      )}
+
+      {/* ── SPINNING PHASE ── */}
+      {phase === 'spinning' && (
+        <div style={{textAlign:'center',maxWidth:'80vw'}}>
+          <div style={{fontSize:14,letterSpacing:4,color:'rgba(255,255,255,0.35)',textTransform:'uppercase',marginBottom:24}}>Selecting from {remainRef.current.length+1} participants...</div>
+          <div style={{overflow:'hidden',height:'clamp(80px,15vw,140px)',position:'relative'}}>
+            <div key={spinName} style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:'clamp(40px,7vw,88px)',fontWeight:900,color:'#f0f0f8',textAlign:'center',animation:'spin-name 0.15s ease',textShadow:`0 0 30px ${accentColor}88`,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+              {spinName}
+            </div>
+          </div>
+          <div style={{display:'flex',justifyContent:'center',gap:8,marginTop:24}}>
+            {[...Array(5)].map((_,i)=><div key={i} style={{width:6,height:6,borderRadius:'50%',background:accentColor,opacity:0.3+i*0.15,animation:`twinkle ${0.4+i*0.1}s ease-in-out infinite alternate`}}/>)}
+          </div>
+        </div>
+      )}
+
+      {/* ── DONE / REVEAL PHASE ── */}
+      {phase === 'done' && revealName && (
+        <div style={{textAlign:'center',animation:'winner-explode 0.8s cubic-bezier(0.34,1.56,0.64,1) forwards',maxWidth:'85vw'}}>
+          {/* Spotlight beam */}
+          <div style={{position:'absolute',top:0,left:'50%',transform:'translateX(-50%)',width:400,height:'70%',background:`linear-gradient(180deg, ${accentColor}22 0%, transparent 100%)`,pointerEvents:'none',animation:'spotlight 0.5s ease forwards'}}/>
+
+          <div style={{fontSize:14,fontWeight:700,letterSpacing:4,color:accentColor,textTransform:'uppercase',marginBottom:12}}>🏆 Winner {curWinner+1} of {winnerCount}</div>
+          <div style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:'clamp(44px,8vw,96px)',fontWeight:900,color:'#f0f0f8',lineHeight:1.1,marginBottom:16,textShadow:`0 0 40px ${accentColor}, 0 0 80px ${accentColor}55`,animation:`pulse-glow 2s ease-in-out infinite`,wordBreak:'break-word'}}>
+            {revealName.name}
+          </div>
+          {(revealName.handle||revealName.email||revealName.subscriberId) && (
+            <div style={{display:'flex',gap:16,justifyContent:'center',flexWrap:'wrap',marginBottom:32}}>
+              {revealName.handle && <div style={{padding:'6px 16px',background:`${accentColor}22`,border:`1px solid ${accentColor}44`,borderRadius:50,fontSize:15,color:accentColor,fontWeight:600}}>{revealName.handle}</div>}
+              {revealName.email && <div style={{padding:'6px 16px',background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:50,fontSize:15,color:'rgba(255,255,255,0.6)'}}>{revealName.email}</div>}
+              {revealName.subscriberId && <div style={{padding:'6px 16px',background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:50,fontSize:15,color:'rgba(255,255,255,0.4)'}}>ID: {revealName.subscriberId}</div>}
+            </div>
+          )}
+
+          {/* Previously drawn winners */}
+          {winners.length > 1 && (
+            <div style={{marginBottom:28}}>
+              <div style={{fontSize:12,color:'rgba(255,255,255,0.3)',textTransform:'uppercase',letterSpacing:2,marginBottom:8}}>Previous winners</div>
+              <div style={{display:'flex',gap:8,justifyContent:'center',flexWrap:'wrap'}}>
+                {winners.slice(0,-1).map((w,i)=>(
+                  <span key={i} style={{padding:'4px 12px',background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:50,fontSize:13,color:'rgba(255,255,255,0.5)'}}>{i===0?'🥇':i===1?'🥈':'🥉'} {w.name}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{display:'flex',gap:12,justifyContent:'center'}}>
+            {!isLastWinner && remainRef.current.length > 0 && (
+              <button onClick={drawNext} style={{padding:'14px 32px',background:`linear-gradient(135deg,${accentColor},#c084fc)`,border:'none',borderRadius:14,color:'#0a0a15',fontSize:16,fontWeight:800,cursor:'pointer'}}>
+                Draw Winner {curWinner+2} →
+              </button>
+            )}
+            <button onClick={finish} style={{padding:'14px 32px',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.15)',borderRadius:14,color:'#f0f0f8',fontSize:16,fontWeight:700,cursor:'pointer'}}>
+              {isLastWinner || remainRef.current.length===0 ? '🎉 Finish Draw' : 'Finish Early'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── RESULTS SCREEN ─────────────────────────────────────────────────────────
+function ResultsScreen({ channel, winners, drawDate, onReset }) {
+  const accentColor = CAT_COLORS_L[channel.cat] || '#c084fc';
+  const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
+
+  return (
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:32,position:'relative',zIndex:1}}>
+      <div style={{textAlign:'center',maxWidth:600,width:'100%',animation:'fadeInUp 0.6s ease'}}>
+        <div style={{fontSize:64,marginBottom:16}}>🎉</div>
+        <h1 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:36,fontWeight:900,color:'#f0f0f8',marginBottom:4}}>Draw Complete!</h1>
+        <div style={{fontSize:14,color:'rgba(255,255,255,0.4)',marginBottom:32}}>{channel.name} · {drawDate}</div>
+        <div style={{display:'flex',flexDirection:'column',gap:12,marginBottom:32}}>
+          {winners.map((w,i)=>(
+            <div key={i} style={{padding:'20px 24px',background: i===0?`${accentColor}14`:'rgba(255,255,255,0.04)',border:`1px solid ${i===0?accentColor+'44':'rgba(255,255,255,0.1)'}`,borderRadius:16,display:'flex',alignItems:'center',gap:16}}>
+              <span style={{fontSize:i===0?32:24}}>{medals[i]}</span>
+              <div style={{flex:1,textAlign:'left'}}>
+                <div style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:i===0?22:18,fontWeight:800,color: i===0?accentColor:'#e8e8f8'}}>{w.name}</div>
+                <div style={{fontSize:13,color:'rgba(255,255,255,0.4)',marginTop:2,display:'flex',gap:12}}>
+                  {w.handle && <span>{w.handle}</span>}
+                  {w.email && <span>{w.email}</span>}
+                </div>
+              </div>
+              <div style={{fontSize:12,fontWeight:700,color:'rgba(255,255,255,0.3)'}}>#{i+1}</div>
+            </div>
+          ))}
+        </div>
+        <button onClick={onReset} style={{padding:'14px 36px',background:`linear-gradient(135deg,${accentColor},#c084fc)`,border:'none',borderRadius:14,color:'#0a0a15',fontSize:16,fontWeight:800,cursor:'pointer'}}>
+          ← Back to Lottery
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── SETUP SCREEN ───────────────────────────────────────────────────────────
+function SetupScreen({ onDraw, history }) {
+  const admin = isAdmin();
+  const [selCh, setSelCh]         = useState(CHANNELS[0]);
+  const [winnerCount, setWinnerCount] = useState(1);
+  const [subs, setSubs]           = useState(() => loadSubs(CHANNELS[0].sno));
+  const [showSubs, setShowSubs]   = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const accentColor = CAT_COLORS_L[selCh.cat] || '#c084fc';
+
+  const selectChannel = (ch) => {
+    setSelCh(ch);
+    setSubs(loadSubs(ch.sno));
+  };
+
+  const canDraw = subs.length > 0 && winnerCount >= 1 && winnerCount <= subs.length;
+
+  return (
+    <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',position:'relative',zIndex:1}}>
+      {/* HEADER */}
+      <div style={{borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'18px 32px',display:'flex',alignItems:'center',gap:16,background:'rgba(0,0,0,0.2)',backdropFilter:'blur(12px)',position:'sticky',top:0,zIndex:100}}>
+        <a href="Pujiverse Network.html" style={{padding:'6px 14px',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,color:'rgba(255,255,255,0.5)',textDecoration:'none',fontSize:13}}>← Network</a>
+        <div style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:16,fontWeight:800}}>
+          <span style={{color:'rgba(255,255,255,0.4)'}}>PUJIVERSE</span>&nbsp;
+          <span style={{background:'linear-gradient(135deg,#22d3ee,#c084fc)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text'}}>LOTTERY</span>
+        </div>
+        <div style={{marginLeft:'auto',display:'flex',gap:10,alignItems:'center'}}>
+          {admin
+            ? <span style={{padding:'4px 12px',borderRadius:50,background:'rgba(74,222,128,0.12)',color:'#4ade80',border:'1px solid rgba(74,222,128,0.3)',fontSize:11,fontWeight:700,letterSpacing:1,textTransform:'uppercase'}}>● Admin</span>
+            : <span style={{padding:'4px 12px',borderRadius:50,background:'rgba(255,255,255,0.05)',color:'rgba(255,255,255,0.4)',border:'1px solid rgba(255,255,255,0.1)',fontSize:11,fontWeight:600,letterSpacing:1,textTransform:'uppercase'}}>👁 Public</span>}
+          <button onClick={()=>setShowHistory(true)} style={{padding:'6px 16px',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,background:'rgba(255,255,255,0.04)',color:'rgba(255,255,255,0.55)',cursor:'pointer',fontSize:13}}>📋 History ({history.length})</button>
+          {admin && (
+            <button onClick={()=>{ try{localStorage.removeItem('pv_is_admin');}catch(e){} location.reload(); }}
+              style={{padding:'6px 16px',border:'1px solid rgba(239,68,68,0.25)',borderRadius:10,background:'rgba(239,68,68,0.12)',color:'#f87171',cursor:'pointer',fontSize:13,fontWeight:600}}>
+              Logout
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div style={{flex:1,maxWidth:920,margin:'0 auto',padding:'40px 24px',width:'100%'}}>
+        {/* Hero */}
+        <div style={{textAlign:'center',marginBottom:48}}>
+          <div style={{fontSize:13,fontWeight:600,letterSpacing:4,color:'rgba(255,255,255,0.3)',textTransform:'uppercase',marginBottom:12}}>Monthly Draw System</div>
+          <h1 style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:'clamp(40px,6vw,72px)',fontWeight:900,margin:'0 0 12px',background:'linear-gradient(135deg,#22d3ee,#c084fc,#f472b6)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text'}}>Subscriber Lottery</h1>
+          <p style={{color:'rgba(255,255,255,0.4)',fontSize:16,maxWidth:480,margin:'0 auto'}}>Pick your channel, load your subscriber list, and run a live draw for your audience</p>
+        </div>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:24}}>
+          {/* LEFT — Channel picker */}
+          <div>
+            <div style={{fontSize:12,fontWeight:600,color:'rgba(255,255,255,0.4)',textTransform:'uppercase',letterSpacing:2,marginBottom:12}}>1 · Select Channel</div>
+            <div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:16,overflow:'hidden'}}>
+              {/* current selection */}
+              <div style={{padding:'18px 20px',borderBottom:'1px solid rgba(255,255,255,0.08)',display:'flex',alignItems:'center',gap:12}}>
+                <div style={{width:40,height:40,borderRadius:12,background:`${accentColor}22`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:800,color:accentColor,flexShrink:0}}>{selCh.sno.split('.')[1]}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:15,fontWeight:700,color:'#f0f0f8'}}>{selCh.name}</div>
+                  <div style={{fontSize:12,color:'rgba(255,255,255,0.4)'}}>{selCh.handle} · {selCh.cat}</div>
+                </div>
+                <div style={{fontSize:13,fontWeight:700,color: selCh.score>=90?'#4ade80':'#facc15'}}>{selCh.score}</div>
+              </div>
+              {/* dropdown list */}
+              <div style={{maxHeight:280,overflowY:'auto'}}>
+                {CHANNELS.map(ch => {
+                  const ac = CAT_COLORS_L[ch.cat]||'#c084fc';
+                  const subsCount = loadSubs(ch.sno).length;
+                  return (
+                    <div key={ch.sno} onClick={()=>selectChannel(ch)} style={{
+                      display:'flex',alignItems:'center',gap:10,padding:'10px 16px',cursor:'pointer',
+                      background: selCh.sno===ch.sno?`${ac}12`:'transparent',
+                      borderLeft: selCh.sno===ch.sno?`3px solid ${ac}`:'3px solid transparent',
+                      transition:'all 0.12s'
+                    }}
+                    onMouseEnter={e=>{ if(selCh.sno!==ch.sno) e.currentTarget.style.background='rgba(255,255,255,0.04)'; }}
+                    onMouseLeave={e=>{ if(selCh.sno!==ch.sno) e.currentTarget.style.background='transparent'; }}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:600,color: selCh.sno===ch.sno?ac:'#d0d0e8',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{ch.name}</div>
+                        <div style={{fontSize:11,color:'rgba(255,255,255,0.3)'}}>{ch.handle}</div>
+                      </div>
+                      {subsCount>0 && <span style={{fontSize:11,color:ac,background:`${ac}22`,padding:'2px 7px',borderRadius:20,flexShrink:0}}>{subsCount}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT — Config + launch */}
+          <div style={{display:'flex',flexDirection:'column',gap:20}}>
+            {/* Subscribers */}
+            <div>
+              <div style={{fontSize:12,fontWeight:600,color:'rgba(255,255,255,0.4)',textTransform:'uppercase',letterSpacing:2,marginBottom:12}}>2 · Subscriber List</div>
+              <div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:16,padding:'18px 20px'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:subs.length>0?16:0}}>
+                  <div>
+                    <div style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:28,fontWeight:800,color: subs.length>0?accentColor:'rgba(255,255,255,0.3)'}}>{subs.length}</div>
+                    <div style={{fontSize:12,color:'rgba(255,255,255,0.35)'}}>subscribers in pool</div>
+                  </div>
+                  {admin ? (
+                    <button onClick={()=>setShowSubs(true)} style={{padding:'8px 18px',background:`${accentColor}22`,border:`1px solid ${accentColor}44`,borderRadius:10,color:accentColor,cursor:'pointer',fontSize:13,fontWeight:600}}>
+                      {subs.length===0 ? '+ Add Subscribers' : 'Manage →'}
+                    </button>
+                  ) : subs.length>0 ? (
+                    <button onClick={()=>setShowSubs(true)} style={{padding:'8px 18px',background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,color:'rgba(255,255,255,0.55)',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                      👁 View list
+                    </button>
+                  ) : (
+                    <span style={{padding:'8px 14px',borderRadius:10,fontSize:12,color:'rgba(255,255,255,0.35)',fontStyle:'italic'}}>Admin will add subscribers</span>
+                  )}
+                </div>
+                {subs.length>0 && (
+                  <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
+                    {subs.slice(0,12).map((s,i)=>(
+                      <span key={i} style={{padding:'3px 10px',background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:50,fontSize:12,color:'rgba(255,255,255,0.5)'}}>{s.name}</span>
+                    ))}
+                    {subs.length>12 && <span style={{padding:'3px 10px',background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:50,fontSize:12,color:'rgba(255,255,255,0.4)'}}>+{subs.length-12} more</span>}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Winner count */}
+            <div>
+              <div style={{fontSize:12,fontWeight:600,color:'rgba(255,255,255,0.4)',textTransform:'uppercase',letterSpacing:2,marginBottom:12}}>3 · Number of Winners</div>
+              <div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:16,padding:'18px 20px'}}>
+                <div style={{display:'flex',gap:10,alignItems:'center',marginBottom:12}}>
+                  <button onClick={()=>setWinnerCount(n=>Math.max(1,n-1))} style={{width:36,height:36,borderRadius:10,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.12)',color:'#e8e8f8',cursor:'pointer',fontSize:18,display:'flex',alignItems:'center',justifyContent:'center'}}>−</button>
+                  <input type="number" min={1} max={subs.length||1} value={winnerCount} onChange={e=>setWinnerCount(Math.max(1,Math.min(subs.length||1,parseInt(e.target.value)||1)))} style={{flex:1,padding:'10px',background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:10,color:'#e8e8f8',fontSize:20,fontWeight:800,textAlign:'center',outline:'none',fontFamily:"'Space Grotesk',sans-serif"}}/>
+                  <button onClick={()=>setWinnerCount(n=>Math.min(subs.length||1,n+1))} style={{width:36,height:36,borderRadius:10,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.12)',color:'#e8e8f8',cursor:'pointer',fontSize:18,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
+                </div>
+                <div style={{display:'flex',gap:6}}>
+                  {[1,3,5,10].filter(n=>n<=subs.length).map(n=>(
+                    <button key={n} onClick={()=>setWinnerCount(n)} style={{flex:1,padding:'7px',borderRadius:8,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,background:winnerCount===n?`${accentColor}33`:'rgba(255,255,255,0.05)',color:winnerCount===n?accentColor:'rgba(255,255,255,0.4)',transition:'all 0.12s'}}>{n}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* START button */}
+            <button
+              onClick={()=>canDraw&&onDraw(selCh, subs, winnerCount)}
+              disabled={!canDraw}
+              style={{
+                padding:'18px',borderRadius:16,border:'none',cursor:canDraw?'pointer':'not-allowed',
+                fontSize:17,fontWeight:900,fontFamily:"'Space Grotesk',sans-serif",
+                background:canDraw?`linear-gradient(135deg,${accentColor},#c084fc,#f472b6)`:'rgba(255,255,255,0.05)',
+                color:canDraw?'#04040c':'rgba(255,255,255,0.2)',
+                opacity:canDraw?1:0.6,transition:'all 0.2s',
+                boxShadow:canDraw?`0 8px 32px ${accentColor}44`:'none',
+                transform:'translateY(0)'
+              }}
+              onMouseEnter={e=>{ if(canDraw){ e.currentTarget.style.transform='translateY(-2px)'; e.currentTarget.style.boxShadow=`0 12px 40px ${accentColor}66`; } }}
+              onMouseLeave={e=>{ e.currentTarget.style.transform='translateY(0)'; e.currentTarget.style.boxShadow=canDraw?`0 8px 32px ${accentColor}44`:'none'; }}
+            >
+              {!canDraw && subs.length===0 ? '⚠ Add subscribers first' :
+               !canDraw ? `⚠ Need at least ${winnerCount} subscribers` :
+               `🎰 Start Live Draw — ${winnerCount} Winner${winnerCount>1?'s':''}`}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {showSubs && <SubsManager channel={selCh} subs={subs} setSubs={s=>{setSubs(s);saveSubs(selCh.sno,s);}} onClose={()=>setShowSubs(false)}/>}
+      {showHistory && <HistoryModal history={history} onClose={()=>setShowHistory(false)}/>}
+    </div>
+  );
+}
+
+// ── ROOT APP ───────────────────────────────────────────────────────────────
+function LotteryApp() {
+  const [screen, setScreen]     = useState('setup');
+  const [drawConfig, setDrawConfig] = useState(null);
+  const [drawResult, setDrawResult] = useState(null);
+  const [history, setHistory]   = useState(loadHistory);
+
+  const startDraw = (channel, subs, winnerCount) => {
+    setDrawConfig({ channel, pool: [...subs], winnerCount });
+    setScreen('draw');
+  };
+
+  const completeDraw = (winners) => {
+    if (!drawConfig) return;
+    const record = {
+      id: uid(),
+      channel: drawConfig.channel.name,
+      channelSno: drawConfig.channel.sno,
+      date: new Date().toLocaleDateString('en-IN', {day:'2-digit',month:'short',year:'numeric'}),
+      poolSize: drawConfig.pool.length,
+      winnerCount: winners.length,
+      winners
+    };
+    const newHistory = [...history, record];
+    setHistory(newHistory);
+    saveHistory(newHistory);
+    setDrawResult({ channel: drawConfig.channel, winners, drawDate: record.date });
+    setScreen('results');
+  };
+
+  const reset = () => { setScreen('setup'); setDrawConfig(null); setDrawResult(null); };
+
+  return (
+    <>
+      <Stars/>
+      {screen === 'setup' && <SetupScreen onDraw={startDraw} history={history}/>}
+      {screen === 'draw' && drawConfig && (
+        <DrawScreen
+          channel={drawConfig.channel}
+          pool={drawConfig.pool}
+          winnerCount={drawConfig.winnerCount}
+          onComplete={completeDraw}
+          onCancel={reset}
+        />
+      )}
+      {screen === 'results' && drawResult && (
+        <ResultsScreen channel={drawResult.channel} winners={drawResult.winners} drawDate={drawResult.drawDate} onReset={reset}/>
+      )}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<LotteryApp/>);
+</script>
+</body>
+</html>

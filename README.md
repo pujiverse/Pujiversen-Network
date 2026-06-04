@@ -1,2 +1,2 @@
-# Pujiversen-Network
-official website
+# PujiverseNetwork
+PUJIVERSE NETWORK — Master Data
