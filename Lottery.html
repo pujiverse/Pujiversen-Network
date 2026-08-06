@@ -86,8 +86,11 @@ function loadHistory() {
   try { return JSON.parse(localStorage.getItem('pv_lot_history') || '[]'); } catch { return []; }
 }
 function saveHistory(arr) { localStorage.setItem('pv_lot_history', JSON.stringify(arr)); }
-// Admin flag — set by AdminPanel after successful login. Without it, subscriber editing UI is hidden.
-function isAdmin() { return localStorage.getItem('pv_is_admin') === '1'; }
+// Admin session — set by the main site's login ONLY after the correct password
+// is verified. The token must match the salted password hash; a hand-set flag
+// like 'pv_is_admin=1' no longer unlocks anything. Expires when the tab closes.
+const PV_ADMIN_HASH = '593e02a8be2c22a03723d49e471849e4462b1fb099fce65348cf97b7c5ca073c';
+function isAdmin() { try { return sessionStorage.getItem('pv_admin_token') === PV_ADMIN_HASH; } catch(e){ return false; } }
 
 const CAT_COLORS_L = {
   "Science & Technology":"#22d3ee","Entertainment":"#c084fc","Education":"#818cf8",
@@ -631,7 +634,7 @@ function SetupScreen({ onDraw, history }) {
     <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',position:'relative',zIndex:1}}>
       {/* HEADER */}
       <div style={{borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'18px 32px',display:'flex',alignItems:'center',gap:16,background:'rgba(0,0,0,0.2)',backdropFilter:'blur(12px)',position:'sticky',top:0,zIndex:100}}>
-        <a href="Pujiverse Network.html" style={{padding:'6px 14px',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,color:'rgba(255,255,255,0.5)',textDecoration:'none',fontSize:13}}>← Network</a>
+        <a href="index.html" style={{padding:'6px 14px',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,color:'rgba(255,255,255,0.5)',textDecoration:'none',fontSize:13}}>← Network</a>
         <div style={{fontFamily:"'Space Grotesk',sans-serif",fontSize:16,fontWeight:800}}>
           <span style={{color:'rgba(255,255,255,0.4)'}}>PUJIVERSE</span>&nbsp;
           <span style={{background:'linear-gradient(135deg,#22d3ee,#c084fc)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text'}}>LOTTERY</span>
@@ -642,7 +645,7 @@ function SetupScreen({ onDraw, history }) {
             : <span style={{padding:'4px 12px',borderRadius:50,background:'rgba(255,255,255,0.05)',color:'rgba(255,255,255,0.4)',border:'1px solid rgba(255,255,255,0.1)',fontSize:11,fontWeight:600,letterSpacing:1,textTransform:'uppercase'}}>👁 Public</span>}
           <button onClick={()=>setShowHistory(true)} style={{padding:'6px 16px',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,background:'rgba(255,255,255,0.04)',color:'rgba(255,255,255,0.55)',cursor:'pointer',fontSize:13}}>📋 History ({history.length})</button>
           {admin && (
-            <button onClick={()=>{ try{localStorage.removeItem('pv_is_admin');}catch(e){} location.reload(); }}
+            <button onClick={()=>{ try{sessionStorage.removeItem('pv_admin_token');localStorage.removeItem('pv_is_admin');}catch(e){} location.reload(); }}
               style={{padding:'6px 16px',border:'1px solid rgba(239,68,68,0.25)',borderRadius:10,background:'rgba(239,68,68,0.12)',color:'#f87171',cursor:'pointer',fontSize:13,fontWeight:600}}>
               Logout
             </button>

@@ -36,10 +36,26 @@
     ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
     @keyframes twinkle { from { opacity: 0.1; transform: scale(0.8);} to { opacity: 0.8; transform: scale(1.2);} }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(12px);} to { opacity: 1; transform: translateY(0);} }
+    /* global orbit keyframes so moons rotate in every view */
+    @keyframes pvspin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
+    @keyframes pvspinrev { from { transform: rotate(0deg);} to { transform: rotate(-360deg);} }
+    /* burning sun */
+    @keyframes sunPulse {
+      0%,100% { box-shadow: 0 0 70px 22px rgba(251,146,60,0.55), 0 0 140px 50px rgba(249,115,22,0.30), 0 0 220px 90px rgba(220,38,38,0.18); }
+      50%     { box-shadow: 0 0 95px 34px rgba(253,186,116,0.7), 0 0 190px 72px rgba(249,115,22,0.42), 0 0 300px 120px rgba(220,38,38,0.26); }
+    }
+    @keyframes sunChurn { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
+    @keyframes sunFlicker { 0%,100% { opacity: .85;} 25% { opacity: 1;} 50% { opacity: .7;} 75% { opacity: .95;} }
+    @keyframes shoot {
+      0%   { transform: translate(0,0) rotate(var(--ang)); opacity: 0; }
+      8%   { opacity: 1; }
+      100% { transform: translate(var(--dx), var(--dy)) rotate(var(--ang)); opacity: 0; }
+    }
+    @keyframes starGlow { 0%,100% { opacity: .25; } 50% { opacity: 1; } }
     #root { position: relative; z-index: 1; }
-    /* rocket cursor: hide native cursor on fine-pointer devices */
+    /* rocket cursor mode: hide native cursor on fine-pointer devices */
     @media (pointer: fine) {
-      body, a, button, select, input, textarea, [onclick], label { cursor: none !important; }
+      body.pv-rocket, body.pv-rocket a, body.pv-rocket button, body.pv-rocket select, body.pv-rocket input, body.pv-rocket textarea, body.pv-rocket [onclick], body.pv-rocket label { cursor: none !important; }
     }
   </style>
 
@@ -48,13 +64,11 @@
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 
-  <!-- Supabase + SheetJS -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Supabase + SheetJS (exact pinned versions — avoids floating-version supply-chain risk) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" crossorigin="anonymous"></script>
 
-  <!-- Data + service layer -->
-  <script src="js/data.js"></script>
-  <script src="js/supabaseService.js"></script>
+  <!-- Data + service layer are inlined below (kept in js/ for modular reference) -->
 </head>
 <body>
 <div id="root"></div>
@@ -428,7 +442,7 @@ function PlaylistModal({ ch, onClose, videos }) {
                         {plVideos.map((v, vi) => {
                           const id = ytId(v.url);
                           return (
-                            <a key={vi} href={v.url} target="_blank" rel="noreferrer" style={{ display:'flex', flexDirection:'column', gap:8, padding:8, background:'rgba(255,255,255,0.025)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:10, textDecoration:'none', transition:'all 0.15s' }}
+                            <a key={vi} href={safeUrl(v.url)} target="_blank" rel="noreferrer" style={{ display:'flex', flexDirection:'column', gap:8, padding:8, background:'rgba(255,255,255,0.025)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:10, textDecoration:'none', transition:'all 0.15s' }}
                               onMouseEnter={e=>{ e.currentTarget.style.background='rgba(255,255,255,0.06)'; e.currentTarget.style.transform='translateY(-2px)';}}
                               onMouseLeave={e=>{ e.currentTarget.style.background='rgba(255,255,255,0.025)'; e.currentTarget.style.transform='translateY(0)';}}>
                               <div style={{ aspectRatio:'16/9', borderRadius:8, background: id ? `url(https://img.youtube.com/vi/${id}/mqdefault.jpg) center/cover` : `${col.badge}33`, position:'relative', overflow:'hidden' }}>
@@ -557,7 +571,7 @@ function ProjectsSection({ websites }) {
           const cleanUrl = (w.url||'').replace(/^https?:\/\//,'');
           const thumb = cleanUrl ? `https://image.thum.io/get/width/600/crop/450/${w.url}` : '';
           return (
-            <a key={w.id} href={w.url} target="_blank" rel="noreferrer" style={{
+            <a key={w.id} href={safeUrl(w.url)} target="_blank" rel="noreferrer" style={{
               display:'block', textDecoration:'none', background:'rgba(255,255,255,0.03)',
               border:'1px solid rgba(255,255,255,0.08)', borderRadius:16, overflow:'hidden',
               transition:'all 0.2s'
@@ -709,7 +723,7 @@ function PublicView({ onAdminClick, videos, websites = [], posts = [] }) {
         </div>
         <div style={{ display:'flex', flexWrap:'wrap', gap:8, justifyContent:'center' }}>
           {socialShown.map(s => (
-            <a key={s.platform} href={s.url} target="_blank" rel="noreferrer" style={{
+            <a key={s.platform} href={safeUrl(s.url)} target="_blank" rel="noreferrer" style={{
               display:'inline-flex', alignItems:'center', gap:7, padding:'8px 14px',
               background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)',
               borderRadius:50, fontSize:13, color: s.color, textDecoration:'none',
@@ -804,48 +818,139 @@ Object.assign(window, { PublicView, SocialIcon, LotteryWidget, ProjectsSection, 
 // Solar system view + rocket cursor + channel pages with moons
 // ============================================================
 
-// ---------- Rocket cursor ----------
+// ---------- Channel emblems (logo per planet) ----------
+// If a channel has a `logo` image URL it is used; otherwise this emoji emblem.
+const CHANNEL_ICONS = {
+  "1.01":"\uD83E\uDD16","1.02":"\uD83D\uDCF1","1.03":"\uD83D\uDE80","1.04":"\uD83C\uDF0C","1.05":"\uD83D\uDD0C",
+  "1.06":"\uD83D\uDD0D","1.07":"\uD83D\uDD2A","1.08":"\uD83E\uDDE0","1.09":"\uD83D\uDC41\uFE0F","1.10":"\uD83D\uDC7B",
+  "1.11":"\uD83D\uDD2C","1.12":"\uD83D\uDCB0","1.13":"\uD83D\uDCBC","1.14":"\u20BF","1.15":"\uD83C\uDFE0",
+  "1.16":"\uD83D\uDC8E","1.17":"\uD83C\uDFAE","1.18":"\uD83C\uDFAC","1.19":"\u26BD","1.20":"\uD83C\uDF1F",
+  "1.21":"\uD83C\uDFA7","1.22":"\uD83E\uDDD8","1.23":"\uD83D\uDD25","1.24":"\uD83D\uDCDC","1.25":"\uD83D\uDDE3\uFE0F",
+  "1.26":"\uD83E\uDDF8","1.27":"\uD83D\uDCAA","1.28":"\uD83C\uDF73","1.29":"\u2728","1.30":"\uD83D\uDD49\uFE0F",
+  "1.31":"\u26A1","1.32":"\uD83C\uDF0A","1.33":"\u2708\uFE0F","1.34":"\uD83C\uDF3E","1.35":"\uD83D\uDE86",
+  "1.36":"\uD83D\uDCA1","1.37":"\uD83C\uDFB5"
+};
+function chIcon(ch) { return (ch && CHANNEL_ICONS[ch.sno]) || "\uD83E\uDE90"; }
+
+// ---------- Rocket cursor (bigger + smoke trail) ----------
 function RocketCursor() {
   const ref = React.useRef(null);
-  const pos = React.useRef({ x: 0, y: 0, px: 0, py: 0 });
+  const puffRefs = React.useRef([]);
+  const [mode, setMode] = React.useState(() => localStorage.getItem('pv_cursor_mode') || 'cursor');
+  React.useEffect(() => {
+    try { localStorage.setItem('pv_cursor_mode', mode); } catch(e){}
+    document.body.classList.toggle('pv-rocket', mode !== 'cursor');
+    return () => document.body.classList.remove('pv-rocket');
+  }, [mode]);
+  const N = 90; // smoke pool
+  const parts = React.useRef(Array.from({ length: N }, () => ({ active: false })));
+  const head = React.useRef(0);
+  const pos = React.useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2, px: window.innerWidth / 2, py: window.innerHeight / 2, acc: 0, dirx: 0, diry: 1 });
 
   React.useEffect(() => {
+    if (mode === 'cursor') return;
     const el = ref.current;
     let raf;
     const move = (e) => {
-      pos.current.px = pos.current.x;
-      pos.current.py = pos.current.y;
-      pos.current.x = e.clientX;
-      pos.current.y = e.clientY;
+      const p = pos.current;
+      p.px = p.x; p.py = p.y; p.x = e.clientX; p.y = e.clientY;
+    };
+    // spawn a smoke puff at the rocket's tail (the cursor point)
+    const spawn = (x, y, dirx, diry) => {
+      const idx = head.current; head.current = (idx + 1) % N;
+      const a = Math.random() * Math.PI * 2;
+      parts.current[idx] = {
+        active: true,
+        x: x + (Math.random() - 0.5) * 3,
+        y: y + (Math.random() - 0.5) * 3,
+        vx: -dirx * 0.45 + Math.cos(a) * 0.1,
+        vy: -diry * 0.45 + Math.sin(a) * 0.1 - 0.05,
+        born: performance.now(),
+        life: mode === 'rocket' ? 5000 + Math.random() * 4000 : 900 + Math.random() * 900, // rocket smoke lingers 5–9s, sparkles fade fast
+        size: mode === 'rocket' ? 6 + Math.random() * 7 : 3 + Math.random() * 4,
+      };
     };
     const tick = () => {
       const p = pos.current;
       const dx = p.x - p.px, dy = p.y - p.py;
-      const ang = Math.atan2(dy, dx) * 180 / Math.PI + 90;
+      const dist = Math.hypot(dx, dy);
+      const moving = dist > 0.5;
+      let ang = 90;
+      if (moving) { ang = Math.atan2(dy, dx) * 180 / Math.PI + 90; p.dirx = dx / dist; p.diry = dy / dist; }
       if (el) el.style.transform = `translate(${p.x}px, ${p.y}px) rotate(${ang}deg)`;
+      // emit puffs along the path so the trail is continuous
+      // trail origin: rocket = flame tip (tail anchored at cursor); satellite/star = behind the body
+      const back = mode === 'rocket' ? 4 : 18;
+      if (moving) { p.acc += dist; while (p.acc > 7) { p.acc -= 7; spawn(p.x - p.dirx * back, p.y - p.diry * back, p.dirx, p.diry); } }
+      // advance + render every puff
+      const now = performance.now();
+      for (let i = 0; i < N; i++) {
+        const s = puffRefs.current[i]; const pt = parts.current[i];
+        if (!s) continue;
+        if (!pt.active) { s.style.opacity = 0; continue; }
+        const age = now - pt.born;
+        if (age >= pt.life) { pt.active = false; s.style.opacity = 0; continue; }
+        const f = age / pt.life;
+        pt.x += pt.vx; pt.y += pt.vy; pt.vx *= 0.985; pt.vy = pt.vy * 0.985 - 0.004;
+        const size = pt.size * (1 + f * 2.6);
+        s.style.width = size + 'px';
+        s.style.height = size + 'px';
+        s.style.opacity = (1 - f) * 0.42;
+        s.style.transform = `translate(${pt.x}px, ${pt.y}px) translate(-50%,-50%)`;
+      }
       raf = requestAnimationFrame(tick);
     };
     window.addEventListener('mousemove', move);
     raf = requestAnimationFrame(tick);
     return () => { window.removeEventListener('mousemove', move); cancelAnimationFrame(raf); };
-  }, []);
+  }, [mode]);
 
   // hide on touch devices
   if (typeof window !== 'undefined' && 'ontouchstart' in window) return null;
 
-  return (
-    <div ref={ref} style={{
-      position: 'fixed', top: 0, left: 0, width: 0, height: 0,
-      pointerEvents: 'none', zIndex: 9999, marginLeft: -14, marginTop: -14,
-      transition: 'transform 0.05s linear',
-    }}>
-      <svg width="28" height="28" viewBox="0 0 24 24" style={{ filter: 'drop-shadow(0 0 6px #22d3ee)' }}>
-        <path d="M12 2c2.5 2 4 5.5 4 9 0 1.4-.3 2.7-.8 3.9L12 22l-3.2-7.1A9.8 9.8 0 0 1 8 11c0-3.5 1.5-7 4-9z" fill="#e8e8f8"/>
-        <circle cx="12" cy="9.5" r="1.6" fill="#22d3ee"/>
-        <path d="M8.5 13l-2 3 3-1zM15.5 13l2 3-3-1z" fill="#c084fc"/>
-        <path d="M10.4 18h3.2l-1.6 4z" fill="#fb923c"/>
-      </svg>
+  const toggle = (
+    <div className="pv-cursor-toggle" style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 14, zIndex: 9999, display: 'flex', gap: 2, background: 'rgba(10,10,22,0.85)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 999, padding: 3, backdropFilter: 'blur(8px)' }}>
+      {[['rocket','🚀','Rocket'],['satellite','🛰️','Satellite'],['star','⭐','Flying star'],['cursor','🖱️','Normal cursor']].map(([m, icon, tip]) => (
+        <button key={m} onPointerDown={() => setMode(m)} title={tip} style={{
+          border: 'none', borderRadius: 999, padding: '8px 13px', fontSize: 16, cursor: 'pointer', lineHeight: 1,
+          background: mode === m ? 'rgba(34,211,238,0.22)' : 'transparent',
+          outline: mode === m ? '1px solid rgba(34,211,238,0.5)' : 'none'
+        }}>{icon}</button>
+      ))}
     </div>
+  );
+  if (mode === 'cursor') return toggle;
+  return (
+    <React.Fragment>
+      {toggle}
+      {/* lingering smoke puffs */}
+      {Array.from({ length: N }).map((_, i) => (
+        <div key={i} ref={el => puffRefs.current[i] = el} style={{
+          position: 'fixed', top: 0, left: 0, borderRadius: '50%', pointerEvents: 'none', zIndex: 9997,
+          background: mode === 'star' ? 'radial-gradient(circle, rgba(255,240,180,0.95), rgba(251,191,36,0.35) 55%, transparent 75%)' : mode === 'satellite' ? 'radial-gradient(circle, rgba(160,235,255,0.9), rgba(34,211,238,0.3) 55%, transparent 75%)' : 'radial-gradient(circle, rgba(228,231,243,0.85), rgba(178,188,214,0.32) 50%, transparent 72%)',
+          filter: mode === 'rocket' ? 'blur(3px)' : 'blur(1px)', opacity: 0, willChange: 'transform,opacity'
+        }} />
+      ))}
+      {/* rocket — tail anchored at the cursor, nose pointing where you move */}
+      <div ref={ref} style={{
+        position: 'fixed', top: 0, left: 0, width: 0, height: 0,
+        pointerEvents: 'none', zIndex: 9999, transition: 'transform 0.04s linear',
+      }}>
+        <div style={{ transform: mode === 'rocket' ? 'translate(-50%,-92%)' : 'translate(-50%,-50%)' }}>
+          {mode === 'rocket' ? (
+          <svg width="50" height="50" viewBox="0 0 24 24" style={{ filter: 'drop-shadow(0 0 9px #22d3ee)' }}>
+            <path d="M12 1.4c2.8 2.2 4.3 5.7 4.3 9.4 0 1.6-.3 3-.9 4.3L12 21.4l-3.4-6.3c-.6-1.3-.9-2.7-.9-4.3 0-3.7 1.5-7.2 4.3-9.4z" fill="#eef2ff" stroke="#c7d2fe" strokeWidth="0.4"/>
+            <circle cx="12" cy="9.4" r="2.1" fill="#0ea5e9"/>
+            <circle cx="12" cy="9.4" r="1" fill="#bae6fd"/>
+            <path d="M8 13.6l-2.7 3.5 3.3-1.1zM16 13.6l2.7 3.5-3.3-1.1z" fill="#c084fc"/>
+            <path d="M10.2 18.5h3.6L12 23z" fill="#fb923c"/>
+          </svg>
+          ) : (
+          <span style={{ fontSize: mode === 'satellite' ? 34 : 38, display: 'inline-block', filter: mode === 'star' ? 'drop-shadow(0 0 10px #fbbf24)' : 'drop-shadow(0 0 8px #22d3ee)' }}>{mode === 'satellite' ? '🛰️' : '⭐'}</span>
+          )}
+        </div>
+      </div>
+    </React.Fragment>
   );
 }
 
@@ -855,23 +960,57 @@ function CosmicCanvas() {
   React.useEffect(() => {
     const cv = ref.current; if (!cv) return;
     const ctx = cv.getContext('2d');
-    let w, h, stars = [], raf;
+    let w, h, stars = [], shooters = [], raf;
+    const COLORS = ['255,255,255', '190,225,255', '255,225,190', '210,200,255'];
     const resize = () => {
       w = cv.width = window.innerWidth; h = cv.height = window.innerHeight;
-      stars = Array.from({ length: Math.min(220, Math.floor(w * h / 9000)) }, () => ({
-        x: Math.random() * w, y: Math.random() * h, z: Math.random() * 1.5 + 0.3,
+      stars = Array.from({ length: Math.min(520, Math.floor(w * h / 3200)) }, () => ({
+        x: Math.random() * w, y: Math.random() * h,
+        z: Math.random() * 1.8 + 0.3,
         tw: Math.random() * Math.PI * 2,
+        sp: 0.6 + Math.random() * 1.8,
+        glow: Math.random() < 0.18,
+        col: COLORS[Math.floor(Math.random() * COLORS.length)],
+        vx: (Math.random() - 0.5) * 0.04,
+        vy: 0.02 + Math.random() * 0.05,
       }));
     };
     resize();
     window.addEventListener('resize', resize);
+
+    const spawnShooter = () => {
+      shooters.push({
+        x: Math.random() * w * 0.7, y: Math.random() * h * 0.4,
+        vx: 5 + Math.random() * 5, vy: 2 + Math.random() * 3,
+        life: 0, max: 60 + Math.random() * 30, len: 80 + Math.random() * 120,
+      });
+    };
+
     const draw = () => {
       ctx.clearRect(0, 0, w, h);
       for (const s of stars) {
-        s.tw += 0.02;
-        const a = 0.4 + Math.sin(s.tw) * 0.4;
-        ctx.fillStyle = `rgba(255,255,255,${a * s.z})`;
+        s.tw += 0.02 * s.sp;
+        s.x += s.vx; s.y += s.vy;
+        if (s.y > h + 2) { s.y = -2; s.x = Math.random() * w; }
+        if (s.x > w + 2) s.x = -2; if (s.x < -2) s.x = w + 2;
+        const a = 0.45 + Math.sin(s.tw) * 0.45;
+        if (s.glow) { ctx.shadowBlur = 8 + Math.sin(s.tw) * 4; ctx.shadowColor = `rgba(${s.col},0.9)`; }
+        else { ctx.shadowBlur = 0; }
+        ctx.fillStyle = `rgba(${s.col},${Math.max(0, a) * Math.min(1, s.z)})`;
         ctx.beginPath(); ctx.arc(s.x, s.y, s.z, 0, 7); ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+      if (Math.random() < 0.006 && shooters.length < 3) spawnShooter();
+      for (let i = shooters.length - 1; i >= 0; i--) {
+        const sh = shooters[i]; sh.life++; sh.x += sh.vx; sh.y += sh.vy;
+        const k = 1 - sh.life / sh.max;
+        const nx = sh.vx / Math.hypot(sh.vx, sh.vy), ny = sh.vy / Math.hypot(sh.vx, sh.vy);
+        const grad = ctx.createLinearGradient(sh.x, sh.y, sh.x - nx * sh.len, sh.y - ny * sh.len);
+        grad.addColorStop(0, `rgba(255,255,255,${0.9 * k})`);
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.strokeStyle = grad; ctx.lineWidth = 2; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(sh.x, sh.y); ctx.lineTo(sh.x - nx * sh.len, sh.y - ny * sh.len); ctx.stroke();
+        if (sh.life > sh.max || sh.x > w + 50 || sh.y > h + 50) shooters.splice(i, 1);
       }
       raf = requestAnimationFrame(draw);
     };
@@ -885,6 +1024,7 @@ function CosmicCanvas() {
 function SolarSystem({ channels, onOpenChannel, onAdminClick }) {
   const cats = ALL_CATEGORIES.filter(c => c !== 'All');
   const [filter, setFilter] = React.useState('All');
+  const [zoom, setZoom] = React.useState(null);
   const list = filter === 'All' ? channels : channels.filter(c => c.cat === filter);
 
   // arrange channels in concentric orbits
@@ -897,6 +1037,12 @@ function SolarSystem({ channels, onOpenChannel, onAdminClick }) {
     rings.push(list.slice(idx, idx + count));
     idx += count; ring++;
   }
+
+  // click a planet -> play zoom-in, then open the channel world
+  const triggerZoom = (ch) => {
+    setZoom(ch);
+    setTimeout(() => { onOpenChannel(ch); }, 720);
+  };
 
   return (
     <div style={{ position: 'relative', minHeight: '100vh', overflow: 'hidden' }}>
@@ -922,7 +1068,7 @@ function SolarSystem({ channels, onOpenChannel, onAdminClick }) {
 
       {/* Hint */}
       <div style={{ textAlign: 'center', position: 'relative', zIndex: 5, marginTop: 4, marginBottom: -8 }}>
-        <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)' }}>Click a planet to enter its channel world →</span>
+        <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)' }}>Click a planet to zoom into its channel world →</span>
       </div>
 
       {/* Orbit system */}
@@ -930,16 +1076,33 @@ function SolarSystem({ channels, onOpenChannel, onAdminClick }) {
         <div style={{ position: 'relative', width: 0, height: 0 }}>
           {/* Sun */}
           <div title="Pujiverse Network" style={{
-            position: 'absolute', width: 86, height: 86, borderRadius: '50%', left: -43, top: -43,
+            position: 'absolute', width: 100, height: 100, borderRadius: '50%', left: -50, top: -50,
             background: 'radial-gradient(circle at 35% 35%, #fff6d5, #fbbf24 40%, #f97316 75%, #b91c1c)',
-            boxShadow: '0 0 60px 18px rgba(251,146,60,0.5), 0 0 120px 40px rgba(249,115,22,0.25)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3,
-            fontFamily: "'Space Grotesk',sans-serif", fontWeight: 900, fontSize: 11, color: '#7c2d12', textAlign: 'center', lineHeight: 1.1
-          }}>PUJI<br />VERSE</div>
+            animation: 'sunPulse 3.2s ease-in-out infinite', zIndex: 3
+          }}>
+            {/* churning plasma surface */}
+            <div style={{
+              position: 'absolute', inset: -6, borderRadius: '50%', mixBlendMode: 'screen',
+              background: 'radial-gradient(circle at 70% 30%, rgba(253,224,71,0.9), transparent 35%), radial-gradient(circle at 30% 65%, rgba(239,68,68,0.85), transparent 40%), radial-gradient(circle at 55% 50%, rgba(249,115,22,0.7), transparent 55%)',
+              animation: 'sunChurn 14s linear infinite', filter: 'blur(2px)'
+            }} />
+            <div style={{
+              position: 'absolute', inset: -3, borderRadius: '50%', mixBlendMode: 'screen',
+              background: 'radial-gradient(circle at 40% 40%, rgba(255,255,210,0.8), transparent 45%), radial-gradient(circle at 65% 70%, rgba(251,146,60,0.7), transparent 50%)',
+              animation: 'sunChurn 9s linear infinite reverse', filter: 'blur(1px)'
+            }} />
+            {/* flickering corona flares */}
+            <div style={{
+              position: 'absolute', inset: -16, borderRadius: '50%', pointerEvents: 'none',
+              background: 'conic-gradient(from 0deg, rgba(251,146,60,0.0), rgba(251,191,36,0.5), rgba(251,146,60,0.0), rgba(239,68,68,0.45), rgba(251,146,60,0.0), rgba(251,191,36,0.5), rgba(251,146,60,0.0), rgba(239,68,68,0.45), rgba(251,146,60,0.0))',
+              filter: 'blur(7px)', animation: 'sunChurn 20s linear infinite, sunFlicker 0.45s steps(3) infinite'
+            }} />
+            <div style={{ position: 'relative', zIndex: 2, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Space Grotesk',sans-serif", fontWeight: 900, fontSize: 12, color: '#7c2d12', textAlign: 'center', lineHeight: 1.1, textShadow: '0 0 6px rgba(255,240,200,0.8)' }}>PUJI<br />VERSE</div>
+          </div>
 
           {rings.map((rch, ri) => {
-            const radius = 130 + ri * 95;
-            const dur = 60 + ri * 24; // seconds per revolution
+            const radius = 150 + ri * 100;
+            const dur = 80 + ri * 26; // seconds per revolution
             return (
               <React.Fragment key={ri}>
                 {/* orbit ring */}
@@ -952,7 +1115,7 @@ function SolarSystem({ channels, onOpenChannel, onAdminClick }) {
                   {rch.map((ch, pi) => {
                     const ang = (pi / rch.length) * Math.PI * 2;
                     const x = Math.cos(ang) * radius, y = Math.sin(ang) * radius;
-                    return <Planet key={ch.sno} ch={ch} x={x} y={y} counterDur={dur} onClick={() => onOpenChannel(ch)} />;
+                    return <Planet key={ch.sno} ch={ch} x={x} y={y} counterDur={dur} onClick={() => triggerZoom(ch)} />;
                   })}
                 </div>
               </React.Fragment>
@@ -961,10 +1124,35 @@ function SolarSystem({ channels, onOpenChannel, onAdminClick }) {
         </div>
       </div>
 
+      {/* ZOOM-IN OVERLAY */}
+      {zoom && (() => {
+        const zc = CAT_COLORS[zoom.cat] || CAT_COLORS['Education'];
+        return (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 9000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#04040c', animation: 'pvZoomBg .7s ease forwards', overflow: 'hidden' }}>
+            <div style={{ animation: 'pvZoomPlanet .72s cubic-bezier(.5,0,.35,1) forwards' }}>
+              <div style={{
+                width: 170, height: 170, borderRadius: '50%', margin: '0 auto',
+                background: `radial-gradient(circle at 32% 28%, #ffffffdd, ${zc.accent} 42%, ${zc.badge} 92%)`,
+                boxShadow: `0 0 90px 24px ${zc.accent}cc, inset -12px -12px 30px rgba(0,0,0,0.45)`,
+                border: '1px solid rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                {zoom.logo ? <img src={zoom.logo} alt="" style={{ width: '74%', height: '74%', borderRadius: '50%', objectFit: 'cover' }}/> : <span style={{ fontSize: 72 }}>{chIcon(zoom)}</span>}
+              </div>
+            </div>
+            <div style={{ position: 'relative', zIndex: 2, marginTop: 26, textAlign: 'center', animation: 'fadeIn .5s ease .15s both' }}>
+              <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: 26, color: '#fff' }}>{zoom.name}</div>
+              <div style={{ color: zc.accent, fontSize: 14, marginTop: 4 }}>Entering channel world…</div>
+            </div>
+          </div>
+        );
+      })()}
+
       <style>{`
         @keyframes pvspin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
         @keyframes pvspinrev { from { transform: rotate(0deg);} to { transform: rotate(-360deg);} }
         .pv-orbit:hover { animation-play-state: paused !important; }
+        @keyframes pvZoomBg { from { opacity: 0;} to { opacity: 1;} }
+        @keyframes pvZoomPlanet { 0% { transform: scale(.35); opacity: 0;} 22% { opacity: 1;} 70% { transform: scale(1.7);} 100% { transform: scale(7); opacity: .15;} }
       `}</style>
     </div>
   );
@@ -973,30 +1161,41 @@ function SolarSystem({ channels, onOpenChannel, onAdminClick }) {
 function Planet({ ch, x, y, counterDur, onClick }) {
   const col = CAT_COLORS[ch.cat] || CAT_COLORS['Education'];
   const accent = col.accent;
-  const size = 34 + (ch.score - 77) * 0.7; // bigger score => bigger planet
+  const size = 52 + (ch.score - 77) * 0.9; // bigger score => bigger planet
   const [hover, setHover] = React.useState(false);
+  const short = ch.name.replace(/^Pujiverse\s*/i, '').replace(/^PUJIVERSE\s*/i, '') || ch.name;
   return (
     <div
       onClick={onClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      style={{ position: 'absolute', left: x, top: y, width: 0, height: 0, cursor: 'pointer', zIndex: hover ? 8 : 4 }}
+      style={{ position: 'absolute', left: x, top: y, width: 0, height: 0, cursor: 'pointer', zIndex: hover ? 20 : 4 }}
     >
-      {/* counter-rotate so label stays upright */}
+      {/* counter-rotate so emblem + label stay upright */}
       <div style={{ animation: `pvspinrev ${counterDur}s linear infinite`, position: 'absolute', left: -size / 2, top: -size / 2 }}>
         <div style={{
-          width: size, height: size, borderRadius: '50%',
-          background: `radial-gradient(circle at 32% 30%, #ffffff55, ${accent} 45%, ${col.badge})`,
-          boxShadow: hover ? `0 0 22px 5px ${accent}aa` : `0 0 12px 2px ${accent}55`,
-          border: '1px solid rgba(255,255,255,0.25)', transition: 'box-shadow .2s, transform .2s',
-          transform: hover ? 'scale(1.25)' : 'scale(1)',
-        }} />
+          width: size, height: size, borderRadius: '50%', position: 'relative',
+          background: `radial-gradient(circle at 32% 28%, #ffffffcc, ${accent} 42%, ${col.badge} 92%)`,
+          boxShadow: hover ? `0 0 30px 8px ${accent}cc, inset -6px -6px 14px rgba(0,0,0,0.45)` : `0 0 16px 3px ${accent}66, inset -6px -6px 14px rgba(0,0,0,0.4)`,
+          border: '1px solid rgba(255,255,255,0.35)', transition: 'box-shadow .2s, transform .2s',
+          transform: hover ? 'scale(1.18)' : 'scale(1)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          {ch.logo
+            ? <img src={ch.logo} alt="" style={{ width: '72%', height: '72%', borderRadius: '50%', objectFit: 'cover' }}/>
+            : <span style={{ fontSize: size * 0.42, lineHeight: 1, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' }}>{chIcon(ch)}</span>}
+          {/* glossy highlight */}
+          <div style={{ position: 'absolute', top: '12%', left: '18%', width: '30%', height: '22%', borderRadius: '50%', background: 'rgba(255,255,255,0.5)', filter: 'blur(3px)', pointerEvents: 'none' }} />
+        </div>
         <div style={{
-          position: 'absolute', top: size + 4, left: '50%', transform: 'translateX(-50%)',
-          whiteSpace: 'nowrap', fontSize: 10.5, fontWeight: 600,
-          color: hover ? accent : 'rgba(255,255,255,0.55)', pointerEvents: 'none',
-          background: hover ? 'rgba(7,7,15,0.85)' : 'transparent', padding: hover ? '2px 6px' : 0, borderRadius: 6,
-        }}>{ch.name.replace(/^Pujiverse\s*/i, '').replace(/^PUJIVERSE\s*/i, '') || ch.name}</div>
+          position: 'absolute', top: size + 6, left: '50%', transform: 'translateX(-50%)',
+          whiteSpace: 'nowrap', fontSize: 12, fontWeight: 700, textAlign: 'center',
+          color: hover ? accent : 'rgba(255,255,255,0.8)', pointerEvents: 'none',
+          background: 'rgba(7,7,15,0.72)', padding: '2px 8px', borderRadius: 6,
+          border: `1px solid ${hover ? accent + '66' : 'transparent'}`
+        }}>{short}
+          {hover && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', fontWeight: 500 }}>{ch.handle} · ⭐{ch.score}</div>}
+        </div>
       </div>
     </div>
   );
@@ -1015,7 +1214,7 @@ function ChannelWorld({ ch, data, onBack, onOpenPlaylists }) {
   const recent = videos.filter(v => v.status === 'published').slice().sort((a, b) => new Date(b.scheduled_at || b.created_at || 0) - new Date(a.scheduled_at || a.created_at || 0)).slice(0, 8);
   const upcoming = videos.filter(v => v.status === 'upcoming');
   const anns = (data.announcements || []).filter(a => !a.channel_sno || a.channel_sno === ch.sno);
-  const posts = (data.posts || []).filter(p => p.channel_sno === ch.sno);
+  const posts = (data.posts || []).filter(p => !p.channel_sno || p.channel_sno === ch.sno);
   const lottery = (data.lottery_entries || []).filter(l => l.channel_sno === ch.sno);
 
   const moons = [
@@ -1030,6 +1229,12 @@ function ChannelWorld({ ch, data, onBack, onOpenPlaylists }) {
 
   return (
     <div style={{ position: 'relative', minHeight: '100vh', zIndex: 5 }}>
+      <style>{`
+        @keyframes pvWorldIn { from { transform: scale(1.18);} to { transform: scale(1);} }
+        @keyframes pvfloat { 0%,100% { transform: translateY(0);} 50% { transform: translateY(-6px);} }
+        .pv-moonstage:hover .pv-moonspin { animation-play-state: paused; }
+        .pv-moonbtn:hover { box-shadow: 0 0 20px 5px rgba(255,255,255,0.3) !important; border-color: rgba(255,255,255,0.55) !important; }
+      `}</style>
       {/* header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '20px 28px', flexWrap: 'wrap' }}>
         <button onClick={onBack} style={{
@@ -1038,9 +1243,10 @@ function ChannelWorld({ ch, data, onBack, onOpenPlaylists }) {
         }}>← Solar system</button>
         <div style={{
           width: 56, height: 56, borderRadius: '50%',
-          background: `radial-gradient(circle at 32% 30%, #ffffff66, ${accent} 45%, ${col.badge})`,
-          boxShadow: `0 0 24px 6px ${accent}66`, flexShrink: 0
-        }} />
+          background: `radial-gradient(circle at 32% 28%, #ffffffcc, ${accent} 42%, ${col.badge})`,
+          boxShadow: `0 0 24px 6px ${accent}66`, flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>{ch.logo ? <img src={ch.logo} alt="" style={{ width: '74%', height: '74%', borderRadius: '50%', objectFit: 'cover' }}/> : <span style={{ fontSize: 26 }}>{chIcon(ch)}</span>}</div>
         <div>
           <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: 24 }}>{ch.name}</div>
           <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>{ch.handle} · {ch.cat} · score {ch.score}</div>
@@ -1052,24 +1258,61 @@ function ChannelWorld({ ch, data, onBack, onOpenPlaylists }) {
         }}>▶ Open on YouTube</a>
       </div>
 
-      {/* moon selector — orbiting chips */}
-      <div style={{ display: 'flex', gap: 10, padding: '0 28px 20px', flexWrap: 'wrap' }}>
-        {moons.map(m => (
-          <button key={m.id} onClick={() => setMoon(m.id)} style={{
-            display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 15px', cursor: 'pointer',
-            borderRadius: 999, fontSize: 13, fontWeight: 600,
-            background: moon === m.id ? `${accent}22` : 'rgba(255,255,255,0.04)',
-            border: `1px solid ${moon === m.id ? accent : 'rgba(255,255,255,0.1)'}`,
-            color: moon === m.id ? accent : 'rgba(255,255,255,0.7)', transition: 'all .15s'
+      {/* PLANET + ORBITING MOONS */}
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 20px 4px', animation: 'pvWorldIn .6s cubic-bezier(.2,.7,.3,1) both' }}>
+        <div className="pv-moonstage" style={{ position: 'relative', width: 380, height: 380, maxWidth: '94vw' }}>
+          {/* orbit ring */}
+          <div style={{ position: 'absolute', inset: 40, border: '1px dashed rgba(255,255,255,0.12)', borderRadius: '50%', pointerEvents: 'none' }} />
+          {/* central planet */}
+          <div style={{
+            position: 'absolute', left: '50%', top: '50%', width: 140, height: 140, transform: 'translate(-50%,-50%)',
+            borderRadius: '50%', zIndex: 3,
+            background: `radial-gradient(circle at 32% 28%, #ffffffcc, ${accent} 42%, ${col.badge} 92%)`,
+            boxShadow: `0 0 55px 14px ${accent}88, inset -12px -12px 26px rgba(0,0,0,0.45)`,
+            border: '1px solid rgba(255,255,255,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center'
           }}>
-            <span>{m.icon}</span>{m.label}
-            <span style={{ opacity: 0.6, fontSize: 11 }}>{moonCount(m.id, { videos, recent, popular, posts, anns, lottery, upcoming })}</span>
-          </button>
-        ))}
+            {ch.logo ? <img src={ch.logo} alt="" style={{ width: '74%', height: '74%', borderRadius: '50%', objectFit: 'cover' }}/> : <span style={{ fontSize: 60 }}>{chIcon(ch)}</span>}
+          </div>
+          {/* moons (slowly orbiting; hover stage to pause) */}
+          <div className="pv-moonspin" style={{ position: 'absolute', inset: 0, animation: 'pvspin 60s linear infinite' }}>
+            {moons.map((m, i) => {
+              const ang = (i / moons.length) * Math.PI * 2 - Math.PI / 2;
+              const R = 158;
+              const mx = Math.cos(ang) * R, my = Math.sin(ang) * R;
+              const sel = moon === m.id;
+              const cnt = moonCount(m.id, { videos, recent, popular, posts, anns, lottery, upcoming });
+              return (
+                <div key={m.id} style={{ position: 'absolute', left: '50%', top: '50%', transform: `translate(${mx}px, ${my}px)` }}>
+                  <div style={{ animation: 'pvspinrev 60s linear infinite' }}>
+                    <button className="pv-moonbtn" onClick={() => { setMoon(m.id); setTimeout(() => { const el = document.getElementById('pv-moon-content'); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 70, behavior: 'smooth' }); }, 60); }} title={m.label} style={{
+                      transform: 'translate(-50%,-50%)', cursor: 'pointer', width: 58, height: 58, borderRadius: '50%',
+                      background: sel ? `${accent}33` : 'rgba(18,18,34,0.92)',
+                      border: `2px solid ${sel ? accent : 'rgba(255,255,255,0.18)'}`,
+                      boxShadow: sel ? `0 0 22px 5px ${accent}99` : '0 2px 10px rgba(0,0,0,0.45)',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0, transition: 'all .15s'
+                    }}>
+                      <span style={{ fontSize: 19, lineHeight: 1.1 }}>{m.icon}</span>
+                      <span style={{ fontSize: 9, fontWeight: 800, color: sel ? accent : 'rgba(255,255,255,0.55)' }}>{(cnt || '').replace('· ', '')}</span>
+                    </button>
+                    <div style={{ position: 'absolute', top: 34, left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap', fontSize: 10, fontWeight: 700, color: sel ? accent : 'rgba(255,255,255,0.5)', pointerEvents: 'none', textShadow: '0 1px 3px #04040c' }}>{m.label}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+      <div style={{ textAlign: 'center', marginTop: 2, marginBottom: 14, fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
+        Hover to pause · tap a moon to open › <b style={{ color: accent }}>{(moons.find(m => m.id === moon) || {}).label}</b>
       </div>
 
-      {/* content panel */}
-      <div style={{ padding: '0 28px 80px', animation: 'fadeIn .3s ease' }}>
+      {/* content panel — the actual items of the selected moon */}
+      <div id="pv-moon-content" style={{ padding: '0 28px 80px', animation: 'fadeIn .3s ease' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 16, borderBottom: `1px solid ${accent}33`, paddingBottom: 10 }}>
+          <span style={{ fontSize: 22 }}>{(moons.find(m => m.id === moon) || {}).icon}</span>
+          <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 20, fontWeight: 800, color: '#f0f0f8' }}>{(moons.find(m => m.id === moon) || {}).label}</span>
+          <span style={{ fontSize: 13, color: accent, fontWeight: 700 }}>{(moonCount(moon, { videos, recent, popular, posts, anns, lottery, upcoming }) || '').replace('· ', '') && `${(moonCount(moon, { videos, recent, popular, posts, anns, lottery, upcoming }) || '').replace('· ', '')} item(s)`}</span>
+        </div>
         {moon === 'overview' && <ChannelOverview ch={ch} accent={accent} videos={videos} upcoming={upcoming} anns={anns} posts={posts} lottery={lottery} onOpenPlaylists={onOpenPlaylists} />}
         {moon === 'videos' && <VideoGrid videos={videos} accent={accent} empty="No videos imported yet. Add them in the Excel workbook." />}
         {moon === 'recent' && <VideoGrid videos={recent} accent={accent} empty="No recently uploaded videos." />}
@@ -1179,7 +1422,7 @@ function VideoGrid({ videos, accent, empty }) {
             {v.description && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 8, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{v.description}</div>}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>
               <span>{v.status === 'upcoming' ? `📅 ${fmtDate(v.scheduled_at)}` : `👁 ${fmt(v.views || 0)}`}</span>
-              {v.url ? <a href={v.url} target="_blank" rel="noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 600 }}>Watch →</a> : <span style={{ opacity: 0.5 }}>{v.status}</span>}
+              {v.url ? <a href={safeUrl(v.url)} target="_blank" rel="noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 600 }}>Watch →</a> : <span style={{ opacity: 0.5 }}>{v.status}</span>}
             </div>
           </div>
         </Card>
@@ -1263,10 +1506,20 @@ function Empty({ msg }) {
 }
 
 // ---- formatting helpers ----
+// Block dangerous URL schemes (javascript:, data:, etc.) before putting any
+// data-supplied value into an href. Returns '#' for anything not http(s)/mailto.
+function safeUrl(u) {
+  if (!u) return '#';
+  const s = String(u).trim();
+  if (/^(https?:|mailto:|tel:)/i.test(s)) return s;
+  if (/^(\/|\.|#)/.test(s)) return s;                 // relative links are fine
+  if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return '#';      // any other scheme -> blocked
+  return 'https://' + s;                               // bare domain -> assume https
+}
 function fmt(n) { n = Number(n) || 0; if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B'; if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M'; if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K'; return String(n); }
 function fmtDate(d) { if (!d) return '—'; const x = new Date(d); return isNaN(x) ? '—' : x.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); }
 
-Object.assign(window, { RocketCursor, CosmicCanvas, SolarSystem, Planet, ChannelWorld, ChannelOverview, VideoGrid, PostList, AnnList, LotteryPanel, Card, Stat, Empty, fmt, fmtDate, analyzePlaylists, moonCount });
+Object.assign(window, { RocketCursor, CosmicCanvas, SolarSystem, Planet, ChannelWorld, ChannelOverview, VideoGrid, PostList, AnnList, LotteryPanel, Card, Stat, Empty, fmt, fmtDate, safeUrl, analyzePlaylists, moonCount });
 
 
 // ============================================================
@@ -1306,7 +1559,7 @@ function SocialHub({ data, onBack }) {
       {tab === 'social' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 16 }}>
           {(data.social && data.social.length ? data.social : SOCIAL_LINKS).map((s, i) => (
-            <a key={i} href={s.url} target="_blank" rel="noreferrer" style={{
+            <a key={i} href={safeUrl(s.url)} target="_blank" rel="noreferrer" style={{
               textDecoration: 'none', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
               borderRadius: 16, padding: 18, display: 'flex', alignItems: 'center', gap: 14, transition: 'all .2s'
             }}
@@ -1346,27 +1599,53 @@ function sessionId() {
   return id;
 }
 
-// Rule-based fallback brain — answers from CHANNELS / SOCIAL_LINKS / data
+// Rule-based fallback brain — knows the whole site structure. Replies are strings
+// or { text, action:'hub' } (the chat renders a button that opens the Hub view).
 function localBrain(q, data) {
   const t = (q || '').toLowerCase();
   const chans = (data.channels && data.channels.length ? data.channels : CHANNELS);
 
+  // contact / business enquiries
+  if (/contact|e-?mail|gmail|reach (you|out|him)|business|collab|sponsor|partner|hire|talk to|get in touch/.test(t))
+    return { text: "You can reach Pujiverse directly at\n\n\ud83d\udce7 pujiverse@gmail.com\n\nFor the fastest reply, connect on social media — the Hub has every platform we're on. Tap below! \ud83d\ude80", action: 'hub' };
+
   // greeting
   if (/^(hi|hey|hello|yo|namaste|hola)\b/.test(t))
-    return `Hey! 🪐 I'm the Pujiverse assistant. Ask me about any of our ${chans.length} channels, where to find a topic, our lottery, or social links.`;
+    return `Hey! \ud83e\ude90 I'm the Pujiverse assistant. I know this whole galaxy — ${chans.length} channels, the lottery, socials and how everything works. Try "find me space videos", "what categories do you have" or "how do I contact you".`;
+
+  // how the site works / structure / navigation
+  if (/how (do|does|to).*(site|navigate|use|work)|what is (this|pujiverse)|structure|which views|solar (system|view)|planets?\b|moons?\b/.test(t))
+    return `Here's how Pujiverse works:\n\ud83e\ude90 Solar view — every planet is one of our ${chans.length} YouTube channels orbiting the Pujiverse sun. Click a planet to zoom into its world; its moons hold Videos, Recently Uploaded, Popular, Posts, Announcements and Lottery.\n\ud83d\udef0 Hub — all our social media links, announcements and posts.\n\ud83d\udcc7 Grid view — the classic list of every channel.\n\ud83c\udfb0 Lottery — live subscriber draws (the button just above me).\nSwitch views bottom-left · change your cursor (\ud83d\ude80\ud83d\udef0\ufe0f\u2b50\ud83d\uddb1\ufe0f) bottom-center.`;
 
   // lottery
   if (/lottery|lucky|draw|winner|ticket/.test(t)) {
     const entries = data.lottery_entries || [];
     const winners = entries.filter(e => e.is_winner).length;
-    return `🎰 Our lottery currently has ${entries.length} entries${winners ? ` and ${winners} winner(s)` : ''}. You can enter from any channel's Lottery moon. Want me to point you to a specific channel?`;
+    return `\ud83c\udfb0 Our lottery runs live subscriber draws per channel${entries.length ? ` — currently ${entries.length} entries${winners ? `, ${winners} winner(s)` : ''}` : ''}. Open it from the \ud83c\udfb0 Lottery button (above me) or any channel's Lottery moon. Winners are drawn live with a spinning reveal!`;
   }
 
-  // social / where to follow
-  if (/follow|social|instagram|twitter|tiktok|discord|facebook|where.*find|links?/.test(t)) {
-    const top = SOCIAL_LINKS.slice(0, 6).map(s => `${s.platform}: ${s.url}`).join('\n');
-    return `Here's where to follow Pujiverse:\n${top}\n…and more on the Social page. 🚀`;
+  // social / where to follow — offer the Hub
+  if (/follow|social|instagram|twitter|tiktok|discord|facebook|youtube channel|where.*find|links?|connect/.test(t)) {
+    const socials = (data.social && data.social.length ? data.social : SOCIAL_LINKS);
+    const top = socials.slice(0, 6).map(s => `${s.platform}: ${s.handle || s.url}`).join('\n');
+    return { text: `Here's where to follow Pujiverse:\n${top}\n…and more in the Hub — tap below to connect with me. \ud83d\ude80`, action: 'hub' };
   }
+
+  // categories / galaxies
+  if (/categor|galax|genre|kinds? of channel|types? of channel/.test(t)) {
+    const counts = {};
+    chans.forEach(c => { counts[c.cat] = (counts[c.cat] || 0) + 1; });
+    return `Our galaxies (categories):\n` + Object.entries(counts).map(([c, n]) => `• ${c} — ${n} channel${n > 1 ? 's' : ''}`).join('\n') + `\n\nTell me a topic and I'll point you to the right planet!`;
+  }
+
+  // admin / editing questions
+  if (/admin|password|log ?in|edit|upload|change data/.test(t))
+    return `The admin panel is private — only the Pujiverse owner can log in and edit. Everything you see (channels, videos, lottery) is read-only for visitors. \ud83d\udd12 Need something? Email \ud83d\udce7 pujiverse@gmail.com`;
+
+  // exact channel lookup by name/handle
+  const named = chans.find(c => t.includes(c.name.toLowerCase()) || (c.handle && t.includes(c.handle.toLowerCase().replace('@', ''))));
+  if (named)
+    return `\ud83d\udcfa ${named.name} (${named.handle}) — ${named.cat}\n\u2b50 Viral score ${named.score} · ${named.status}\nPlaylists: ${(named.playlists || []).slice(0, 5).join(', ') || '—'}\nWatch: ${named.url}\n\nOr click its planet in the solar system to explore its videos, posts and lottery moon.`;
 
   // recommend by topic — match channel categories/names/playlists
   const matches = chans.filter(c => {
@@ -1379,17 +1658,105 @@ function localBrain(q, data) {
 
   // count / list
   if (/how many|number of|count/.test(t) && /channel/.test(t))
-    return `Pujiverse Network runs ${chans.length} channels across categories like Science & Tech, Entertainment, Education, Gaming, Finance and more. 🌌`;
+    return `Pujiverse Network runs ${chans.length} channels across categories like Science & Tech, Entertainment, Education, Gaming, Finance and more. \ud83c\udf0c`;
 
   if (/help|what can you|who are you/.test(t))
-    return `I can: recommend a channel for any topic, find where to watch something, share our social links, and explain the lottery. Try "I want crypto videos" or "where do I follow you on Instagram".`;
+    return `I can: recommend a channel for any topic, explain how the site works, share contact info and social links, and explain the lottery. Try "I want crypto videos", "how do I contact you" or "take me to your socials".`;
 
-  return `I can help you navigate Pujiverse's ${chans.length} channels, find videos on a topic, share social links, or explain the lottery. What are you into — tech, mystery, finance, gaming, something else?`;
+  return `I can help you navigate Pujiverse's ${chans.length} channels, find videos on a topic, share contact info (\ud83d\udce7 pujiverse@gmail.com), social links, or explain the lottery. What are you into — tech, mystery, finance, gaming, something else?`;
 }
+
+// ---------- Welcome announcement (editable in admin → 📣 Welcome) ----------
+const PV_WELCOME_DEFAULT = { enabled: true, title: 'Welcome to Pujiverse 🌌', message: "Explore our channels across the solar system — and check the \ud83c\udfb0 Lottery for this week's lucky draw!", promos: [] };
+
+function WelcomeModal({ supabase }) {
+  const [cfg, setCfg] = React.useState(null);
+  const [show, setShow] = React.useState(false);
+  React.useEffect(() => {
+    try { if (sessionStorage.getItem('pv_welcome_seen') === '1') return; } catch (e) {}
+    let local = null; try { local = JSON.parse(localStorage.getItem('pv_welcome') || 'null'); } catch (e) {}
+    const apply = c => { if (c && c.enabled && (c.title || c.message)) { setCfg(c); setShow(true); } };
+    if (supabase) {
+      supabase.from('site_settings').select('value').eq('key', 'welcome').maybeSingle()
+        .then(({ data }) => apply((data && data.value) || local || PV_WELCOME_DEFAULT))
+        .catch(() => apply(local || PV_WELCOME_DEFAULT));
+    } else apply(local || PV_WELCOME_DEFAULT);
+  }, [supabase]);
+  const close = () => { setShow(false); try { sessionStorage.setItem('pv_welcome_seen', '1'); } catch (e) {} };
+  if (!show || !cfg) return null;
+  return (
+    <div onClick={close} style={{ position: 'fixed', inset: 0, zIndex: 9500, background: 'rgba(4,4,12,0.75)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, animation: 'fadeIn .3s ease' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 'min(520px, 100%)', maxHeight: '82vh', overflowY: 'auto', background: 'rgba(14,14,28,0.98)', border: '1px solid rgba(34,211,238,0.35)', borderRadius: 20, padding: '28px 26px', boxShadow: '0 0 60px rgba(34,211,238,0.25)', position: 'relative' }}>
+        <button onClick={close} style={{ position: 'absolute', top: 12, right: 14, background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', fontSize: 18, cursor: 'pointer' }}>✕</button>
+        <div style={{ fontSize: 34, marginBottom: 8 }}>📣</div>
+        <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 24, fontWeight: 800, background: 'linear-gradient(90deg,#22d3ee,#c084fc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: 10 }}>{cfg.title}</div>
+        <div style={{ fontSize: 14.5, lineHeight: 1.65, color: 'rgba(255,255,255,0.8)', whiteSpace: 'pre-wrap', marginBottom: (cfg.promos || []).length ? 18 : 22 }}>{cfg.message}</div>
+        {(cfg.promos || []).length > 0 && (
+          <div style={{ marginBottom: 22 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 2, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', marginBottom: 10 }}>🌱 Grow together — check these out</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {cfg.promos.map((p, i) => (
+                <a key={i} href={safeUrl(p.url)} target="_blank" rel="noreferrer" style={{ padding: '8px 14px', borderRadius: 999, fontSize: 13, fontWeight: 600, textDecoration: 'none', color: '#22d3ee', background: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.35)' }}>{p.label} ↗</a>
+              ))}
+            </div>
+          </div>
+        )}
+        <button onClick={close} style={{ width: '100%', padding: '12px 0', borderRadius: 12, border: 'none', cursor: 'pointer', fontSize: 15, fontWeight: 800, background: 'linear-gradient(135deg,#22d3ee,#c084fc)', color: '#0a0a15' }}>Let's explore 🚀</button>
+      </div>
+    </div>
+  );
+}
+
+function WelcomeTab({ supabase }) {
+  const [cfg, setCfg] = React.useState(() => { try { return JSON.parse(localStorage.getItem('pv_welcome')) || PV_WELCOME_DEFAULT; } catch (e) { return PV_WELCOME_DEFAULT; } });
+  const [promoText, setPromoText] = React.useState(() => (cfg.promos || []).map(p => `${p.label} | ${p.url}`).join('\n'));
+  const [msg, setMsg] = React.useState('');
+  const taStyle = { width: '100%', padding: '10px 13px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, color: '#e8e8f8', fontSize: 13, outline: 'none', fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' };
+  const save = async () => {
+    const promos = promoText.split('\n').map(l => l.trim()).filter(Boolean).map(l => { const parts = l.split('|').map(s => s.trim()); return { label: parts[0] || parts[1] || '', url: parts[1] || '' }; }).filter(p => p.label);
+    const next = { ...cfg, promos };
+    setCfg(next);
+    try { localStorage.setItem('pv_welcome', JSON.stringify(next)); } catch (e) {}
+    try { sessionStorage.removeItem('pv_welcome_seen'); } catch (e) {}
+    let cloud = '';
+    if (supabase) {
+      const { error } = await supabase.from('site_settings').upsert({ key: 'welcome', value: next }, { onConflict: 'key' });
+      cloud = error ? ` — ⚠ cloud save failed (${error.message}). Run the updated SQL; cloud writes need a Supabase Auth login.` : ' + published to Supabase for ALL visitors ✅';
+    } else cloud = ' — saved on this device. Connect Supabase to publish it to all visitors.';
+    setMsg('✓ Saved' + cloud); setTimeout(() => setMsg(''), 8000);
+  };
+  return (
+    <div>
+      <h3 style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 20, fontWeight: 800, color: '#f0f0f8', margin: '0 0 6px' }}>📣 Welcome Announcement</h3>
+      <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, margin: '0 0 24px' }}>Shown as a popup when someone opens the site (once per visit). Great for lucky draw winners + promotions.</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 640 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, fontWeight: 700, color: cfg.enabled ? '#4ade80' : 'rgba(255,255,255,0.5)' }}>
+          <input type="checkbox" checked={!!cfg.enabled} onChange={e => setCfg({ ...cfg, enabled: e.target.checked })} style={{ width: 18, height: 18, accentColor: '#4ade80' }} />
+          Show announcement to visitors
+        </label>
+        <AInput label="Title" value={cfg.title || ''} onChange={v => setCfg({ ...cfg, title: v })} placeholder="Welcome to Pujiverse 🌌" />
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>Message (line breaks kept)</div>
+          <textarea rows={5} value={cfg.message || ''} onChange={e => setCfg({ ...cfg, message: e.target.value })} placeholder={"Welcome to Pujiverse!\nThis week's lucky draw winners are: …"} style={taStyle}></textarea>
+        </div>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>Promotions — one per line, format: <code style={{ color: '#22d3ee' }}>Label | https://link</code></div>
+          <textarea rows={4} value={promoText} onChange={e => setPromoText(e.target.value)} placeholder={"My Instagram | https://instagram.com/pujiverse\nFriend's channel | https://youtube.com/@friend"} style={taStyle}></textarea>
+        </div>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <ABtn onClick={save} variant="primary">Save announcement</ABtn>
+          <ABtn onClick={() => { try { sessionStorage.removeItem('pv_welcome_seen'); } catch (e) {} window.open('index.html', '_blank'); }} variant="ghost">Preview ↗</ABtn>
+        </div>
+        {msg && <div style={{ fontSize: 13, color: msg.includes('⚠') ? '#fbbf24' : '#4ade80' }}>{msg}</div>}
+      </div>
+    </div>
+  );
+}
+Object.assign(window, { WelcomeModal, WelcomeTab });
 
 function AIChat({ supabase, supabaseUrl, data }) {
   const [open, setOpen] = React.useState(false);
-  const [msgs, setMsgs] = React.useState([{ role: 'assistant', content: "Hi! 🚀 I'm your Pujiverse guide. Ask me anything about our channels, videos, lottery, or where to follow us." }]);
+  const [msgs, setMsgs] = React.useState([{ role: 'assistant', content: "Hi! 🚀 I'm your Pujiverse guide. Ask me about our channels, videos, the lottery, how to contact us, or where to follow us." }]);
   const [input, setInput] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const bodyRef = React.useRef(null);
@@ -1428,9 +1795,10 @@ function AIChat({ supabase, supabaseUrl, data }) {
     setMsgs(m => [...m, { role: 'user', content: q }]);
     logMessage('user', q);
     setBusy(true);
-    const reply = await askAgent(q);
-    setMsgs(m => [...m, { role: 'assistant', content: reply }]);
-    logMessage('assistant', reply);
+    const raw = await askAgent(q);
+    const rep = typeof raw === 'string' ? { text: raw } : raw;
+    setMsgs(m => [...m, { role: 'assistant', content: rep.text, action: rep.action }]);
+    logMessage('assistant', rep.text);
     setBusy(false);
   }
 
@@ -1467,7 +1835,14 @@ function AIChat({ supabase, supabaseUrl, data }) {
                 background: m.role === 'user' ? 'linear-gradient(135deg,#22d3ee,#c084fc)' : 'rgba(255,255,255,0.06)',
                 color: m.role === 'user' ? '#0a0a15' : '#e8e8f8',
                 border: m.role === 'user' ? 'none' : '1px solid rgba(255,255,255,0.08)'
-              }}>{m.content}</div>
+              }}>{m.content}
+                {m.action === 'hub' && (
+                  <button onClick={() => { setOpen(false); if (window.pvGoHub) window.pvGoHub(); }} style={{
+                    display: 'block', marginTop: 10, padding: '9px 14px', borderRadius: 10, border: '1px solid rgba(34,211,238,0.5)',
+                    background: 'rgba(34,211,238,0.15)', color: '#22d3ee', cursor: 'pointer', fontSize: 13, fontWeight: 700
+                  }}>🛰 Take me to the Hub →</button>
+                )}
+              </div>
             ))}
             {busy && <div style={{ alignSelf: 'flex-start', fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>typing…</div>}
           </div>
@@ -1628,7 +2003,7 @@ function SearchTab({ supabase }) {
               <tr key={r.id || i} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                 {cfg.cols.map(c => (
                   <td key={c} style={{ padding: '9px 14px', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {c === 'url' || c === 'link' ? (r[c] ? <a href={r[c]} target="_blank" rel="noreferrer" style={{ color: '#22d3ee' }}>open</a> : '—') : String(r[c] ?? '—')}
+                    {c === 'url' || c === 'link' ? (r[c] ? <a href={safeUrl(r[c])} target="_blank" rel="noreferrer" style={{ color: '#22d3ee' }}>open</a> : '—') : String(r[c] ?? '—')}
                   </td>
                 ))}
               </tr>
@@ -1650,8 +2025,19 @@ Object.assign(window, { ImportTab, SearchTab });
 // ADMIN PANEL COMPONENTS
 // ============================================================
 
-const ADMIN_USER = "pujiverse";
-const ADMIN_PASS = "pujiverse2026";
+const ADMIN_USER = "pujiversenetwork";
+// Password is no longer stored in the page. We keep only a salted SHA-256 hash,
+// so reading the source does not reveal the password.
+const ADMIN_SALT = "pv-salt-2026::";
+const ADMIN_PASS_HASH = "593e02a8be2c22a03723d49e471849e4462b1fb099fce65348cf97b7c5ca073c";
+async function sha256Hex(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function verifyAdminPass(pass) {
+  try { return (await sha256Hex(ADMIN_SALT + pass)) === ADMIN_PASS_HASH; }
+  catch { return false; }
+}
 
 // --- Small reusable form input ---
 function AInput({ label, value, onChange, type="text", placeholder="", style={} }) {
@@ -1696,13 +2082,15 @@ function LoginModal({ onLogin, onClose }) {
   const [pass, setPass] = React.useState('');
   const [err, setErr] = React.useState('');
   const [step, setStep] = React.useState(1); // 1=credentials, 2=verify
+  const [checking, setChecking] = React.useState(false);
 
-  const handleLogin = () => {
-    if (user === ADMIN_USER && pass === ADMIN_PASS) {
-      setStep(2);
-    } else {
-      setErr('Invalid credentials. Try again.');
-    }
+  const handleLogin = async () => {
+    if (checking) return;
+    setChecking(true);
+    const ok = (user.trim().toLowerCase() === ADMIN_USER) && await verifyAdminPass(pass);
+    setChecking(false);
+    if (ok) { setErr(''); setStep(2); }
+    else { setErr('Invalid credentials. Try again.'); }
   };
 
   return (
@@ -1720,7 +2108,7 @@ function LoginModal({ onLogin, onClose }) {
           </div>
           {err && <div style={{ padding:'10px 14px', background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:10, color:'#f87171', fontSize:13, marginBottom:16 }}>{err}</div>}
           <div style={{ display:'flex', gap:10 }}>
-            <ABtn onClick={handleLogin} variant="primary" style={{ flex:1 }} onKeyDown={e=>e.key==='Enter'&&handleLogin()}>Continue →</ABtn>
+            <ABtn onClick={handleLogin} variant="primary" style={{ flex:1 }} onKeyDown={e=>e.key==='Enter'&&handleLogin()}>{checking ? 'Checking…' : 'Continue →'}</ABtn>
             <ABtn onClick={onClose} variant="ghost">Cancel</ABtn>
           </div>
         </>}
@@ -1735,7 +2123,7 @@ function LoginModal({ onLogin, onClose }) {
             <div style={{ fontSize:13, color:'rgba(255,255,255,0.6)' }}>Logged in as</div>
             <div style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:18, fontWeight:700, color:'#22d3ee', marginTop:4 }}>@{ADMIN_USER}</div>
           </div>
-          <ABtn onClick={()=>{ try { localStorage.setItem('pv_is_admin','1'); } catch(e){} onLogin(); }} variant="primary" style={{ width:'100%' }}>Enter Admin Panel →</ABtn>
+          <ABtn onClick={()=>{ try { sessionStorage.setItem('pv_admin_token', ADMIN_PASS_HASH); localStorage.removeItem('pv_is_admin'); } catch(e){} onLogin(); }} variant="primary" style={{ width:'100%' }}>Enter Admin Panel →</ABtn>
         </>}
       </div>
     </div>
@@ -1749,9 +2137,46 @@ function ChannelsTab({ supabase, localChannels, setLocalChannels }) {
   const [saving, setSaving] = React.useState(false);
   const [msg, setMsg] = React.useState('');
 
-  const startEdit = (ch) => { setEditing(ch.sno); setForm({...ch, playlists: ch.playlists.join('\n')}); };
-  const startNew  = () => { setEditing('NEW'); setForm({ sno:'', name:'', handle:'', cat:'Education', url:'', score:'', cpm:'Medium', team:1, status:'LIVE', playlists:'' }); };
+  const startEdit = (ch) => { let lg=''; try { lg=(JSON.parse(localStorage.getItem('pv_logos')||'{}'))[ch.sno]||''; } catch {} setEditing(ch.sno); setForm({...ch, logo: lg, playlists: ch.playlists.join('\n')}); };
+  const startNew  = () => { setEditing('NEW'); setForm({ sno:'', name:'', handle:'', cat:'Education', url:'', score:'', cpm:'Medium', team:1, status:'LIVE', logo:'', playlists:'' }); };
   const cancel    = () => { setEditing(null); setForm({}); };
+
+  // ---- planet logo upload (downscaled, saved to localStorage 'pv_logos') ----
+  const saveLogo = (sno, dataUrl) => {
+    if (!sno) return true;
+    let map = {}; try { map = JSON.parse(localStorage.getItem('pv_logos')||'{}'); } catch {}
+    if (dataUrl) map[sno] = dataUrl; else delete map[sno];
+    try {
+      localStorage.setItem('pv_logos', JSON.stringify(map));
+      window.dispatchEvent(new Event('pv-logos'));
+      return true;
+    } catch (err) {
+      // Most likely the ~5MB localStorage quota was exceeded by large images.
+      alert('Could not save this logo — browser storage is full.\\nTry a smaller image, or remove a few existing logos first.');
+      return false;
+    }
+  };
+  const onLogoFile = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        const S = 160, c = document.createElement('canvas'); c.width = S; c.height = S;
+        const ctx = c.getContext('2d');
+        const scale = Math.max(S/img.width, S/img.height);
+        const dw = img.width*scale, dh = img.height*scale;
+        ctx.drawImage(img, (S-dw)/2, (S-dh)/2, dw, dh);
+        const url = c.toDataURL('image/png');
+        setForm(f => ({ ...f, logo: url }));
+        if (form.sno) saveLogo(form.sno, url);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+  const removeLogo = () => { setForm(f => ({ ...f, logo: '' })); if (form.sno) saveLogo(form.sno, ''); };
 
   const save = async () => {
     setSaving(true);
@@ -1818,6 +2243,23 @@ function ChannelsTab({ supabase, localChannels, setLocalChannels }) {
             </div>
           </div>
           <ATextarea label="Playlists (one per line)" value={form.playlists||''} onChange={v=>setForm({...form,playlists:v})} rows={6} placeholder="Playlist 1 name&#10;Playlist 2 name&#10;..." />
+          {/* Planet logo uploader */}
+          <div style={{ display:'flex', alignItems:'center', gap:14, marginTop:16, padding:'14px 16px', background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:12 }}>
+            <div style={{ width:60, height:60, borderRadius:'50%', overflow:'hidden', flexShrink:0, border:'1px solid rgba(255,255,255,0.18)', background:'rgba(255,255,255,0.05)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              {form.logo ? <img src={form.logo} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize:26 }}>{(typeof chIcon==='function' && form.sno) ? chIcon(form) : '🪐'}</span>}
+            </div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:'#e8e8f8', marginBottom:6 }}>Planet Logo {form.sno ? '' : <span style={{ color:'#fb923c', fontWeight:500 }}>(enter S.No first to save)</span>}</div>
+              <div style={{ display:'flex', gap:8 }}>
+                <label style={{ cursor:'pointer', padding:'8px 14px', borderRadius:10, fontSize:13, fontWeight:600, background:'linear-gradient(135deg,#22d3ee,#c084fc)', color:'#0a0a15' }}>
+                  {form.logo ? 'Replace image' : 'Upload image'}
+                  <input type="file" accept="image/*" onChange={onLogoFile} style={{ display:'none' }} />
+                </label>
+                {form.logo && <ABtn onClick={removeLogo} variant="danger" size="sm">Remove</ABtn>}
+              </div>
+              <div style={{ fontSize:11, color:'rgba(255,255,255,0.4)', marginTop:6 }}>Square PNG/JPG works best — auto-resized and shown as the planet face in the solar system.</div>
+            </div>
+          </div>
           <div style={{ display:'flex', gap:10, marginTop:14 }}>
             <ABtn onClick={save} variant="primary">{saving ? 'Saving...' : 'Save Channel'}</ABtn>
             <ABtn onClick={cancel} variant="ghost">Cancel</ABtn>
@@ -1936,7 +2378,7 @@ function VideosTab({ supabase, localChannels, localVideos, setLocalVideos }) {
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:13, fontWeight:600, color:'#e0e0f0', marginBottom:2 }}>{v.title}</div>
-                  <a href={v.url} target="_blank" rel="noreferrer" style={{ fontSize:11, color:'rgba(255,255,255,0.35)', textDecoration:'none' }}>{v.url}</a>
+                  <a href={safeUrl(v.url)} target="_blank" rel="noreferrer" style={{ fontSize:11, color:'rgba(255,255,255,0.35)', textDecoration:'none' }}>{v.url}</a>
                 </div>
                 <ABtn onClick={()=>delVideo(i)} variant="danger" size="sm">×</ABtn>
               </div>
@@ -2000,7 +2442,7 @@ function SocialTab({ localSocial, setLocalSocial }) {
             </div>
             <div style={{ flex:1 }}>
               <div style={{ fontSize:13, fontWeight:700, color:'#e0e0f0' }}>{s.platform}</div>
-              <div style={{ fontSize:11, color:'rgba(255,255,255,0.35)' }}>{s.handle} · <a href={s.url} target="_blank" rel="noreferrer" style={{ color:'rgba(255,255,255,0.3)', textDecoration:'none' }}>{s.url}</a></div>
+              <div style={{ fontSize:11, color:'rgba(255,255,255,0.35)' }}>{s.handle} · <a href={safeUrl(s.url)} target="_blank" rel="noreferrer" style={{ color:'rgba(255,255,255,0.3)', textDecoration:'none' }}>{s.url}</a></div>
             </div>
             <ABtn onClick={()=>{setEditing(i);setForm({...s});}} variant="ghost" size="sm">Edit</ABtn>
             <ABtn onClick={()=>setLocalSocial(localSocial.filter((_,j)=>j!==i))} variant="danger" size="sm">×</ABtn>
@@ -2011,24 +2453,172 @@ function SocialTab({ localSocial, setLocalSocial }) {
   );
 }
 
-// ---- SUPABASE CONFIG TAB ----
-function ConfigTab({ supabaseUrl, supabaseKey, setSupabaseUrl, setSupabaseKey, onConnect, supabase, localChannels, localVideos, localSocial, localWebsites, localPosts }) {
-  const [msg, setMsg] = React.useState('');
-  const [syncing, setSyncing] = React.useState(false);
-  const [syncLog, setSyncLog] = React.useState([]);
+// ---- GOOGLE SHEETS SYNC TAB ----
+const PV_APPS_SCRIPT_CODE = `function doGet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var out = {};
+  ss.getSheets().forEach(function(sh) {
+    var rows = sh.getDataRange().getValues();
+    if (rows.length < 2) { out[sh.getName()] = []; return; }
+    var head = rows[0];
+    out[sh.getName()] = rows.slice(1).map(function(r) {
+      var o = {}; head.forEach(function(h, i) { o[h] = r[i]; }); return o;
+    });
+  });
+  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
+}
+function doPost(e) {
+  var data = JSON.parse(e.postData.contents);
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var updated = [];
+  Object.keys(data).forEach(function(name) {
+    var rows = data[name];
+    if (!Array.isArray(rows)) return;
+    var sh = ss.getSheetByName(name) || ss.insertSheet(name);
+    sh.clearContents();
+    updated.push(name);
+    if (!rows.length) return;
+    var head = Object.keys(rows[0]);
+    sh.getRange(1, 1, 1, head.length).setValues([head]);
+    var vals = rows.map(function(r) {
+      return head.map(function(h) {
+        var v = r[h];
+        if (v === null || v === undefined) return '';
+        if (typeof v === 'object') return JSON.stringify(v);
+        return v;
+      });
+    });
+    sh.getRange(2, 1, vals.length, head.length).setValues(vals);
+  });
+  return ContentService.createTextOutput(JSON.stringify({ ok: true, updated: updated })).setMimeType(ContentService.MimeType.JSON);
+}`;
 
-  const save = () => {
-    localStorage.setItem('pv_sb_url', supabaseUrl);
-    localStorage.setItem('pv_sb_key', supabaseKey);
-    onConnect();
-    setMsg('Supabase config saved & connected!'); setTimeout(()=>setMsg(''),3000);
+function SheetsTab({ supabase, localChannels, setLocalChannels, localVideos, setLocalVideos, localSocial, setLocalSocial, localWebsites, setLocalWebsites, localPosts, setLocalPosts }) {
+  const [gsUrl, setGsUrl] = React.useState(() => localStorage.getItem('pv_gs_url') || '');
+  const [auto, setAuto] = React.useState(() => localStorage.getItem('pv_gs_auto') === '1');
+  const [mins, setMins] = React.useState(() => parseInt(localStorage.getItem('pv_gs_mins'), 10) || 10);
+  const [busy, setBusy] = React.useState(false);
+  const [showCode, setShowCode] = React.useState(false);
+  const [lines, setLines] = React.useState([]);
+  const log = (line, ok = true) => setLines(prev => [...prev.slice(-80), { line, ok, t: new Date().toLocaleTimeString() }]);
+  const saveCfg = () => { localStorage.setItem('pv_gs_url', gsUrl.trim()); log('✓ Google Sheet connection saved'); };
+
+  const collect = () => {
+    const vidRows = [];
+    Object.entries(localVideos || {}).forEach(([sno, plMap]) => Object.entries(plMap || {}).forEach(([pi, vids]) => (vids || []).forEach((v, i) => vidRows.push({ channel_sno: sno, playlist_index: pi, title: v.title || '', url: v.url || '', sort_order: i }))));
+    const subRows = [];
+    (localChannels || []).forEach(ch => { try { JSON.parse(localStorage.getItem('pv_lot_subs_' + ch.sno) || '[]').forEach(s => subRows.push({ channel_sno: ch.sno, ...s })); } catch (e) {} });
+    let hist = []; try { hist = JSON.parse(localStorage.getItem('pv_lot_history') || '[]'); } catch (e) {}
+    return { channels: localChannels, videos: vidRows, social_links: localSocial, websites: localWebsites, posts: localPosts, lottery_subscribers: subRows, lottery_history: hist };
   };
 
-  const log = (line, ok=true) => setSyncLog(prev => [...prev, { line, ok, t: new Date().toLocaleTimeString() }]);
+  const pushSheet = async () => {
+    if (!gsUrl.trim()) { log('✗ Paste your Apps Script Web App URL first (setup steps above)', false); return false; }
+    try {
+      const res = await fetch(gsUrl.trim(), { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(collect()) });
+      const j = await res.json();
+      log(`✓ Pushed to Google Sheet — ${(j.updated || []).length} tabs updated (${(j.updated || []).join(', ')})`);
+      return true;
+    } catch (e) { log('✗ Sheet push failed: ' + (e.message || e) + ' — check the URL and that deployment access is "Anyone"', false); return false; }
+  };
 
-  const syncAll = async () => {
-    if (!supabase) { log('❌ Not connected to Supabase. Click "Connect Supabase" above first.', false); return; }
-    setSyncing(true); setSyncLog([]);
+  const pullSheet = async () => {
+    if (!gsUrl.trim()) { log('✗ Paste your Apps Script Web App URL first', false); return; }
+    if (!confirm('Pull will REPLACE the data in this browser with the Google Sheet contents. Continue?')) return;
+    try {
+      const res = await fetch(gsUrl.trim());
+      const j = await res.json();
+      const parse = (v, fb) => { if (Array.isArray(v)) return v; try { const p = JSON.parse(v); return Array.isArray(p) ? p : fb; } catch (e) { return fb; } };
+      if (Array.isArray(j.channels) && j.channels.length) { setLocalChannels(j.channels.map(c => ({ ...c, playlists: parse(c.playlists, []) }))); log(`✓ channels: ${j.channels.length} pulled`); }
+      if (Array.isArray(j.social_links) && j.social_links.length) { setLocalSocial(j.social_links); log(`✓ social_links: ${j.social_links.length} pulled`); }
+      if (Array.isArray(j.websites)) { setLocalWebsites(j.websites.map(w => ({ ...w, tags: parse(w.tags, []) }))); log(`✓ websites: ${j.websites.length} pulled`); }
+      if (Array.isArray(j.posts)) { setLocalPosts(j.posts); log(`✓ posts: ${j.posts.length} pulled`); }
+      if (Array.isArray(j.videos)) {
+        const nested = {};
+        j.videos.forEach(v => { if (!v.channel_sno) return; const pi = String(v.playlist_index ?? 0); (nested[v.channel_sno] = nested[v.channel_sno] || {}); (nested[v.channel_sno][pi] = nested[v.channel_sno][pi] || []).push({ title: v.title, url: v.url }); });
+        setLocalVideos(nested); localStorage.setItem('pv_videos', JSON.stringify(nested)); log(`✓ videos: ${j.videos.length} pulled`);
+      }
+      if (Array.isArray(j.lottery_subscribers)) {
+        const bySno = {};
+        j.lottery_subscribers.forEach(s => { if (!s.channel_sno) return; const { channel_sno, ...rest } = s; (bySno[channel_sno] = bySno[channel_sno] || []).push(rest); });
+        Object.entries(bySno).forEach(([sno, subs]) => { try { localStorage.setItem('pv_lot_subs_' + sno, JSON.stringify(subs)); } catch (e) {} });
+        log(`✓ lottery_subscribers: ${j.lottery_subscribers.length} pulled`);
+      }
+      if (Array.isArray(j.lottery_history)) {
+        try { localStorage.setItem('pv_lot_history', JSON.stringify(j.lottery_history.map(h => ({ ...h, winners: parse(h.winners, []) })))); } catch (e) {}
+        log(`✓ lottery_history: ${j.lottery_history.length} pulled`);
+      }
+      if (window.pvReloadData) window.pvReloadData();
+      log('— Pull done —');
+    } catch (e) { log('✗ Sheet pull failed: ' + (e.message || e), false); }
+  };
+
+  const pushSupabase = async () => {
+    if (!supabase) { log('✗ Supabase not connected — connect it in the ⚙ Supabase tab first', false); return; }
+    await pvSupabasePush(supabase, { localChannels, localVideos, localSocial, localWebsites, localPosts }, log);
+  };
+  const pushEverywhere = async () => { setBusy(true); await pushSheet(); await pushSupabase(); setBusy(false); };
+
+  // Auto-sync: pushes app data to Sheet + Supabase every N minutes (while the site is open)
+  React.useEffect(() => {
+    localStorage.setItem('pv_gs_auto', auto ? '1' : '0');
+    localStorage.setItem('pv_gs_mins', String(mins));
+    if (!auto || !gsUrl.trim()) return;
+    const id = setInterval(() => { pushEverywhere(); }, Math.max(2, mins) * 60000);
+    return () => clearInterval(id);
+  }, [auto, mins, gsUrl, supabase, localChannels, localVideos, localSocial, localWebsites, localPosts]);
+
+  const gsBtn = { padding: '9px 16px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: '#e8e8f8', cursor: 'pointer', fontSize: 13, fontWeight: 600 };
+  return (
+    <div>
+      <h3 style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: 20, fontWeight: 800, color: '#f0f0f8', margin: '0 0 6px' }}>Google Sheets Sync</h3>
+      <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, margin: '0 0 24px' }}>Two-way sync between this app, your Google Sheet and Supabase</p>
+      <div style={{ background: 'rgba(34,211,238,0.06)', border: '1px solid rgba(34,211,238,0.2)', borderRadius: 14, padding: 20, marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#22d3ee', marginBottom: 12 }}>One-time setup (≈2 minutes):</div>
+        <ol style={{ margin: 0, padding: '0 0 0 20px', color: 'rgba(255,255,255,0.55)', fontSize: 13, lineHeight: 2 }}>
+          <li>Create a Google Sheet at <a href="https://sheets.new" target="_blank" rel="noreferrer" style={{ color: '#22d3ee' }}>sheets.new</a> (name it e.g. “Pujiverse Data”)</li>
+          <li>In the sheet: <strong style={{ color: '#e8e8f8' }}>Extensions → Apps Script</strong>, delete the sample code, paste the code below, save</li>
+          <li>Click <strong style={{ color: '#e8e8f8' }}>Deploy → New deployment → Web app</strong> — Execute as: <strong style={{ color: '#e8e8f8' }}>Me</strong> · Access: <strong style={{ color: '#e8e8f8' }}>Anyone</strong> → Deploy</li>
+          <li>Copy the <strong style={{ color: '#e8e8f8' }}>Web app URL</strong> (ends in /exec) and paste it below</li>
+        </ol>
+        <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+          <button style={gsBtn} onClick={() => { navigator.clipboard.writeText(PV_APPS_SCRIPT_CODE).then(() => log('✓ Apps Script code copied — paste it in Extensions → Apps Script')); }}>📋 Copy Apps Script code</button>
+          <button style={gsBtn} onClick={() => setShowCode(s => !s)}>{showCode ? 'Hide code' : 'Show code'}</button>
+        </div>
+        {showCode && <pre style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 16, fontSize: 11.5, color: '#a8d8a8', overflow: 'auto', maxHeight: 260, lineHeight: 1.6, marginTop: 12 }}>{PV_APPS_SCRIPT_CODE}</pre>}
+      </div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 20 }}>
+        <div style={{ flex: 1, minWidth: 280 }}><AInput label="Apps Script Web App URL" value={gsUrl} onChange={setGsUrl} placeholder="https://script.google.com/macros/s/…/exec" /></div>
+        <ABtn onClick={saveCfg} variant="primary">Save</ABtn>
+      </div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
+        <button style={{ ...gsBtn, background: 'linear-gradient(135deg,#4ade80,#22d3ee)', color: '#04040c', border: 'none' }} disabled={busy} onClick={pushEverywhere}>{busy ? 'Syncing…' : '🚀 Push Everywhere (Sheet + Supabase)'}</button>
+        <button style={gsBtn} onClick={pushSheet}>⬆ Push to Sheet</button>
+        <button style={gsBtn} onClick={pullSheet}>⬇ Pull from Sheet</button>
+        <button style={gsBtn} onClick={pushSupabase}>⬆ Push to Supabase</button>
+      </div>
+      <div style={{ background: 'rgba(192,132,252,0.06)', border: '1px solid rgba(192,132,252,0.25)', borderRadius: 14, padding: '16px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, fontWeight: 700, color: auto ? '#c084fc' : 'rgba(255,255,255,0.6)' }}>
+          <input type="checkbox" checked={auto} onChange={e => setAuto(e.target.checked)} style={{ width: 18, height: 18, accentColor: '#c084fc' }} />
+          Auto-sync
+        </label>
+        <select value={mins} onChange={e => setMins(parseInt(e.target.value, 10))} style={{ padding: '7px 10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, color: '#e8e8f8', fontSize: 13 }}>
+          {[5, 10, 15, 30, 60].map(m => <option key={m} value={m}>every {m} min</option>)}
+        </select>
+        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Pushes app data to your Sheet {supabase ? '+ Supabase ' : ''}automatically while the admin panel is open.</span>
+      </div>
+      {lines.length > 0 && (
+        <div style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: '10px 14px', fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: 12, lineHeight: 1.7, maxHeight: 240, overflow: 'auto' }}>
+          {lines.map((l, i) => <div key={i} style={{ color: l.ok ? 'rgba(255,255,255,0.7)' : '#fca5a5' }}><span style={{ color: 'rgba(255,255,255,0.3)', marginRight: 8 }}>{l.t}</span>{l.line}</div>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- SUPABASE CONFIG TAB ----
+// Shared: push ALL local data to Supabase (used by ⚙ Supabase tab + 📊 Sheets auto-sync)
+async function pvSupabasePush(supabase, { localChannels, localVideos, localSocial, localWebsites, localPosts }, log) {
 
     // 1. CHANNELS — upsert by sno
     try {
@@ -2134,6 +2724,23 @@ function ConfigTab({ supabaseUrl, supabaseKey, setSupabaseUrl, setSupabaseKey, o
     } catch(e) { log(`✗ lottery_history: ${e.message || e} — make sure you ran the new SQL below`, false); }
 
     log('— Done —');
+}
+
+function ConfigTab({ supabaseUrl, supabaseKey, setSupabaseUrl, setSupabaseKey, onConnect, supabase, localChannels, localVideos, localSocial, localWebsites, localPosts }) {
+  const [msg, setMsg] = React.useState('');
+  const [syncing, setSyncing] = React.useState(false);
+  const [syncLog, setSyncLog] = React.useState([]);
+  const save = () => {
+    localStorage.setItem('pv_sb_url', supabaseUrl);
+    localStorage.setItem('pv_sb_key', supabaseKey);
+    onConnect();
+    setMsg('Supabase config saved & connected!'); setTimeout(()=>setMsg(''),3000);
+  };
+  const log = (line, ok=true) => setSyncLog(prev => [...prev, { line, ok, t: new Date().toLocaleTimeString() }]);
+  const syncAll = async () => {
+    if (!supabase) { log('❌ Not connected to Supabase. Click "Connect Supabase" above first.', false); return; }
+    setSyncing(true); setSyncLog([]);
+    await pvSupabasePush(supabase, { localChannels, localVideos, localSocial, localWebsites, localPosts }, log);
     setSyncing(false);
   };
 
@@ -2187,7 +2794,10 @@ function ConfigTab({ supabaseUrl, supabaseKey, setSupabaseUrl, setSupabaseKey, o
       </div>
 
       <h4 style={{ fontFamily:"'Space Grotesk',sans-serif", color:'#c084fc', margin:'0 0 12px' }}>SQL Setup — Run in Supabase SQL Editor</h4>
-      <pre style={{ background:'rgba(0,0,0,0.4)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:12, padding:20, fontSize:12, color:'#a8d8a8', overflow:'auto', maxHeight:400, lineHeight:1.7 }}>{`-- 1. CHANNELS TABLE
+      <pre style={{ background:'rgba(0,0,0,0.4)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:12, padding:20, fontSize:12, color:'#a8d8a8', overflow:'auto', maxHeight:400, lineHeight:1.7 }}>{`-- PUJIVERSE — COMPLETE SETUP (safe for a FRESH project: run this WHOLE script once)
+-- Creates all 8 tables (incl. playlists), locked-down security, and logo image storage.
+
+-- 1. CHANNELS TABLE
 CREATE TABLE IF NOT EXISTS channels (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   sno text UNIQUE,
@@ -2199,8 +2809,10 @@ CREATE TABLE IF NOT EXISTS channels (
   cpm_tier text DEFAULT 'Medium',
   team_size integer DEFAULT 1,
   status text DEFAULT 'LIVE',
+  logo_url text,
   created_at timestamptz DEFAULT now()
 );
+ALTER TABLE channels ADD COLUMN IF NOT EXISTS logo_url text;
 
 -- 2. PLAYLISTS TABLE
 CREATE TABLE IF NOT EXISTS playlists (
@@ -2288,7 +2900,7 @@ CREATE TABLE IF NOT EXISTS lottery_history (
   created_at timestamptz DEFAULT now()
 );
 
--- 9. Enable RLS + public read for all tables
+-- 9. Enable RLS on every table
 ALTER TABLE channels ENABLE ROW LEVEL SECURITY;
 ALTER TABLE playlists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE videos ENABLE ROW LEVEL SECURITY;
@@ -2298,7 +2910,8 @@ ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lottery_subscribers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lottery_history ENABLE ROW LEVEL SECURITY;
 
--- Public read policies
+-- 10. PUBLIC READ — only non-personal display data is readable by visitors.
+--     (Re-run the DROP lines to clear any old wide-open policies.)
 DROP POLICY IF EXISTS "Public read channels" ON channels;
 CREATE POLICY "Public read channels" ON channels FOR SELECT USING (true);
 DROP POLICY IF EXISTS "Public read playlists" ON playlists;
@@ -2311,30 +2924,58 @@ DROP POLICY IF EXISTS "Public read websites" ON websites;
 CREATE POLICY "Public read websites" ON websites FOR SELECT USING (true);
 DROP POLICY IF EXISTS "Public read posts" ON posts;
 CREATE POLICY "Public read posts" ON posts FOR SELECT USING (true);
-DROP POLICY IF EXISTS "Public read lottery_subs" ON lottery_subscribers;
-CREATE POLICY "Public read lottery_subs" ON lottery_subscribers FOR SELECT USING (true);
-DROP POLICY IF EXISTS "Public read lottery_history" ON lottery_history;
-CREATE POLICY "Public read lottery_history" ON lottery_history FOR SELECT USING (true);
 
--- IMPORTANT: write policies (anon key writes from the admin panel)
--- These allow the anon key to insert/update/delete. If you want to lock down writes
--- to authenticated users only, replace USING(true) with USING(auth.role() = 'authenticated').
-DROP POLICY IF EXISTS "Anon write channels" ON channels;
-CREATE POLICY "Anon write channels" ON channels FOR ALL USING (true) WITH CHECK (true);
-DROP POLICY IF EXISTS "Anon write playlists" ON playlists;
-CREATE POLICY "Anon write playlists" ON playlists FOR ALL USING (true) WITH CHECK (true);
-DROP POLICY IF EXISTS "Anon write videos" ON videos;
-CREATE POLICY "Anon write videos" ON videos FOR ALL USING (true) WITH CHECK (true);
-DROP POLICY IF EXISTS "Anon write social" ON social_links;
-CREATE POLICY "Anon write social" ON social_links FOR ALL USING (true) WITH CHECK (true);
-DROP POLICY IF EXISTS "Anon write websites" ON websites;
-CREATE POLICY "Anon write websites" ON websites FOR ALL USING (true) WITH CHECK (true);
-DROP POLICY IF EXISTS "Anon write posts" ON posts;
-CREATE POLICY "Anon write posts" ON posts FOR ALL USING (true) WITH CHECK (true);
-DROP POLICY IF EXISTS "Anon write lottery_subs" ON lottery_subscribers;
-CREATE POLICY "Anon write lottery_subs" ON lottery_subscribers FOR ALL USING (true) WITH CHECK (true);
+-- 11. PRIVATE PII — remove public read from subscriber / lottery tables.
+--     With RLS on and NO policy, the public key gets ZERO access. Names,
+--     emails and phone numbers can no longer be downloaded by anyone.
+DROP POLICY IF EXISTS "Public read lottery_subs"    ON lottery_subscribers;
+DROP POLICY IF EXISTS "Public read lottery_history" ON lottery_history;
+
+-- 12. NO PUBLIC WRITES — delete the old wide-open write policies so the
+--     publishable key can no longer insert / update / delete anything.
+DROP POLICY IF EXISTS "Anon write channels"        ON channels;
+DROP POLICY IF EXISTS "Anon write playlists"       ON playlists;
+DROP POLICY IF EXISTS "Anon write videos"          ON videos;
+DROP POLICY IF EXISTS "Anon write social"          ON social_links;
+DROP POLICY IF EXISTS "Anon write websites"        ON websites;
+DROP POLICY IF EXISTS "Anon write posts"           ON posts;
+DROP POLICY IF EXISTS "Anon write lottery_subs"    ON lottery_subscribers;
 DROP POLICY IF EXISTS "Anon write lottery_history" ON lottery_history;
-CREATE POLICY "Anon write lottery_history" ON lottery_history FOR ALL USING (true) WITH CHECK (true);`}</pre>
+
+-- 13. WRITES require a real login (Supabase Auth). Only signed-in admins
+--     can change data; visitors cannot. The site keeps working on this
+--     device via local storage even without cloud writes.
+CREATE POLICY "Auth write channels"     ON channels            FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Auth write playlists"    ON playlists           FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Auth write videos"       ON videos              FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Auth write social"       ON social_links        FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Auth write websites"     ON websites            FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Auth write posts"        ON posts               FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Auth all lottery_subs"   ON lottery_subscribers FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Auth all lottery_hist"   ON lottery_history     FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- 14b. SITE SETTINGS (welcome announcement etc.) — public read, admin-only write
+CREATE TABLE IF NOT EXISTS site_settings (
+  key text PRIMARY KEY,
+  value jsonb,
+  updated_at timestamptz DEFAULT now()
+);
+ALTER TABLE site_settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public read settings" ON site_settings;
+CREATE POLICY "Public read settings" ON site_settings FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Auth write settings" ON site_settings;
+CREATE POLICY "Auth write settings" ON site_settings FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- 14. LOGO IMAGE STORAGE — public can VIEW logos, only a real admin login can upload
+INSERT INTO storage.buckets (id, name, public) VALUES ('logos','logos', true)
+ON CONFLICT (id) DO NOTHING;
+DROP POLICY IF EXISTS "Public read logos" ON storage.objects;
+CREATE POLICY "Public read logos" ON storage.objects FOR SELECT USING (bucket_id = 'logos');
+DROP POLICY IF EXISTS "Auth write logos" ON storage.objects;
+CREATE POLICY "Auth write logos" ON storage.objects FOR ALL TO authenticated USING (bucket_id = 'logos') WITH CHECK (bucket_id = 'logos');`}</pre>
+      <div style={{ marginTop:14, padding:'12px 16px', background:'rgba(74,222,128,0.08)', border:'1px solid rgba(74,222,128,0.25)', borderRadius:10, fontSize:12.5, color:'rgba(255,255,255,0.7)', lineHeight:1.6 }}>
+        🔒 <strong style={{color:'#4ade80'}}>Security note:</strong> after running this, visitors can only <em>read</em> public info (channels, videos, playlists, social, posts). Subscriber names / emails / phones are <strong>private</strong>, and nobody can edit the database without a real admin login. Your subscriber lists also live safely on this device via local storage.
+      </div>
     </div>
   );
 }
@@ -2566,7 +3207,7 @@ function WebsitesTab({ localWebsites, setLocalWebsites }) {
                 <div style={{ fontSize:14, fontWeight:700, color:'#e8e8f8' }}>{w.title}</div>
                 <div style={{ fontSize:11, color:'rgba(255,255,255,0.35)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{w.url}</div>
               </div>
-              <a href={w.url} target="_blank" rel="noreferrer" style={{ padding:'5px 10px', background:'rgba(34,211,238,0.12)', border:'1px solid rgba(34,211,238,0.25)', borderRadius:8, fontSize:11, color:'#22d3ee', textDecoration:'none' }}>Open</a>
+              <a href={safeUrl(w.url)} target="_blank" rel="noreferrer" style={{ padding:'5px 10px', background:'rgba(34,211,238,0.12)', border:'1px solid rgba(34,211,238,0.25)', borderRadius:8, fontSize:11, color:'#22d3ee', textDecoration:'none' }}>Open</a>
               <ABtn onClick={()=>startEdit(w)} variant="ghost" size="sm">Edit</ABtn>
               <ABtn onClick={()=>del(w.id)} variant="danger" size="sm">×</ABtn>
             </div>
@@ -2710,10 +3351,12 @@ function AdminPanel({ onBack, supabase, supabaseUrl, supabaseKey, setSupabaseUrl
     { id:'posts',     label:'📝 Posts' },
     { id:'social',    label:'Social Links' },
     { id:'config',    label:'⚙ Supabase' },
+    { id:'sheets',    label:'📊 Sheets' },
+    { id:'welcome',   label:'📣 Welcome' },
   ];
 
   const handleLogout = () => {
-    try { localStorage.removeItem('pv_is_admin'); } catch(e){}
+    try { sessionStorage.removeItem('pv_admin_token'); localStorage.removeItem('pv_is_admin'); } catch(e){}
     onBack();
   };
 
@@ -2751,6 +3394,8 @@ function AdminPanel({ onBack, supabase, supabaseUrl, supabaseKey, setSupabaseUrl
               {id:'posts',label:'Latest Posts',icon:'📝',desc:`Medium / Blogger / Patreon posts · ${localPosts.length} added`},
               {id:'social',label:'Social Links',icon:'🔗',desc:'Update your social media platform links'},
               {id:'config',label:'Supabase Config',icon:'🗄️',desc:'Connect your database for persistent storage'},
+              {id:'sheets',label:'Google Sheets Sync',icon:'📊',desc:'Two-way sync with a Google Sheet · auto-sync to Sheet + Supabase'},
+              {id:'welcome',label:'Welcome Announcement',icon:'📣',desc:'Edit the popup visitors see — lucky draw winners, promotions'},
               {id:'lottery',label:'Run Live Draw',icon:'🎬',desc:'Open the live lottery draw screen — stream ready',external:'Lottery.html'},
             ].map(item => (
               <div key={item.id} onClick={()=>item.external ? window.open(item.external,'_blank') : setTab(item.id)} style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:16, padding:'20px', cursor:'pointer', transition:'all 0.2s' }}
@@ -2772,6 +3417,8 @@ function AdminPanel({ onBack, supabase, supabaseUrl, supabaseKey, setSupabaseUrl
         {tab === 'posts'       && <PostsTab localPosts={localPosts} setLocalPosts={setLocalPosts} />}
         {tab === 'social'      && <SocialTab localSocial={localSocial} setLocalSocial={setLocalSocial} />}
         {tab === 'config'      && <ConfigTab supabaseUrl={supabaseUrl} supabaseKey={supabaseKey} setSupabaseUrl={setSupabaseUrl} setSupabaseKey={setSupabaseKey} onConnect={onConnectSupabase} supabase={supabase} localChannels={localChannels} localVideos={localVideos} localSocial={localSocial} localWebsites={localWebsites} localPosts={localPosts} />}
+        {tab === 'sheets'      && <SheetsTab supabase={supabase} localChannels={localChannels} setLocalChannels={setLocalChannels} localVideos={localVideos} setLocalVideos={setLocalVideos} localSocial={localSocial} setLocalSocial={setLocalSocial} localWebsites={localWebsites} setLocalWebsites={setLocalWebsites} localPosts={localPosts} setLocalPosts={setLocalPosts} />}
+        {tab === 'welcome'     && <WelcomeTab supabase={supabase} />}
       </div>
     </div>
   );
@@ -2787,6 +3434,7 @@ Object.assign(window, { AdminPanel, LoginModal });
       // view: 'solar' | 'channel' | 'hub' | 'classic' | 'login' | 'admin'
       const [view, setView]   = useState('solar');
       const [activeCh, setActiveCh] = useState(null);
+      useEffect(() => { window.pvGoHub = () => { setView('hub'); setActiveCh(null); }; return () => { delete window.pvGoHub; }; }, []);
       const clickRef = useRef({ count: 0, timer: null });
 
       // ---- Supabase ----
@@ -2862,19 +3510,39 @@ Object.assign(window, { AdminPanel, LoginModal });
         if (el) el.onclick = handleLogoClick;
       });
 
-      const channels = data.mergedChannels && data.mergedChannels.length ? data.mergedChannels : CHANNELS;
+      // ---- Planet logos (admin-uploaded, stored locally) ----
+      const [logos, setLogos] = useState(() => { try { return JSON.parse(localStorage.getItem('pv_logos') || '{}'); } catch { return {}; } });
+      useEffect(() => {
+        const reload = () => { try { setLogos(JSON.parse(localStorage.getItem('pv_logos') || '{}')); } catch {} };
+        window.addEventListener('pv-logos', reload);
+        window.addEventListener('storage', reload);
+        return () => { window.removeEventListener('pv-logos', reload); window.removeEventListener('storage', reload); };
+      }, []);
+
+      const baseChannels = data.mergedChannels && data.mergedChannels.length ? data.mergedChannels : CHANNELS;
+      const channels = baseChannels.map(c => logos[c.sno] ? { ...c, logo: logos[c.sno] } : c);
 
       return (
         <>
           <CosmicCanvas />
           <RocketCursor />
 
-          {(view==='solar' || view==='channel' || view==='hub') && (
+          {(view==='solar' || view==='channel' || view==='hub' || view==='classic') && (
             <div style={{ position:'fixed', bottom:24, left:24, zIndex:8000, display:'flex', gap:8, flexWrap:'wrap' }}>
               <NavChip active={view==='solar'} onClick={()=>{ setView('solar'); setActiveCh(null); }}>🪐 Solar</NavChip>
               <NavChip active={view==='hub'} onClick={()=>setView('hub')}>🛰 Hub</NavChip>
-              <NavChip onClick={()=>setView('classic')}>📇 Grid view</NavChip>
+              <NavChip active={view==='classic'} onClick={()=>setView('classic')}>📇 Grid view</NavChip>
             </div>
+          )}
+
+          {/* Lottery button — floats just above the AI bot */}
+          {(view==='solar' || view==='channel' || view==='hub' || view==='classic') && (
+            <a href="Lottery.html" title="Live subscriber lottery" style={{
+              position:'fixed', right:24, bottom:96, zIndex:8000, display:'flex', alignItems:'center', gap:8,
+              padding:'11px 17px', borderRadius:999, textDecoration:'none', fontWeight:800, fontSize:13,
+              background:'linear-gradient(135deg,#c084fc,#f472b6)', color:'#0a0a15',
+              boxShadow:'0 6px 22px rgba(192,132,252,0.5)'
+            }}>🎰 Lottery</a>
           )}
 
           {view === 'login' && (
@@ -2926,6 +3594,10 @@ Object.assign(window, { AdminPanel, LoginModal });
               localPosts={localPosts}
               setLocalPosts={setLocalPosts}
             />
+          )}
+
+          {(view==='solar' || view==='channel' || view==='hub' || view==='classic') && (
+            <WelcomeModal supabase={supabase} />
           )}
 
           {(view==='solar' || view==='channel' || view==='hub' || view==='classic') && (

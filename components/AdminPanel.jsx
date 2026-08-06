@@ -88,7 +88,7 @@ function LoginModal({ onLogin, onClose }) {
             <div style={{ fontSize:13, color:'rgba(255,255,255,0.6)' }}>Logged in as</div>
             <div style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:18, fontWeight:700, color:'#22d3ee', marginTop:4 }}>@{ADMIN_USER}</div>
           </div>
-          <ABtn onClick={()=>{ try { localStorage.setItem('pv_is_admin','1'); } catch(e){} onLogin(); }} variant="primary" style={{ width:'100%' }}>Enter Admin Panel →</ABtn>
+          <ABtn onClick={onLogin} variant="primary" style={{ width:'100%' }}>Enter Admin Panel →</ABtn>
         </>}
       </div>
     </div>
@@ -365,129 +365,14 @@ function SocialTab({ localSocial, setLocalSocial }) {
 }
 
 // ---- SUPABASE CONFIG TAB ----
-function ConfigTab({ supabaseUrl, supabaseKey, setSupabaseUrl, setSupabaseKey, onConnect, supabase, localChannels, localVideos, localSocial, localWebsites, localPosts }) {
+function ConfigTab({ supabaseUrl, supabaseKey, setSupabaseUrl, setSupabaseKey, onConnect }) {
   const [msg, setMsg] = React.useState('');
-  const [syncing, setSyncing] = React.useState(false);
-  const [syncLog, setSyncLog] = React.useState([]);
 
   const save = () => {
     localStorage.setItem('pv_sb_url', supabaseUrl);
     localStorage.setItem('pv_sb_key', supabaseKey);
     onConnect();
     setMsg('Supabase config saved & connected!'); setTimeout(()=>setMsg(''),3000);
-  };
-
-  const log = (line, ok=true) => setSyncLog(prev => [...prev, { line, ok, t: new Date().toLocaleTimeString() }]);
-
-  const syncAll = async () => {
-    if (!supabase) { log('❌ Not connected to Supabase. Click "Connect Supabase" above first.', false); return; }
-    setSyncing(true); setSyncLog([]);
-
-    // 1. CHANNELS — upsert by sno
-    try {
-      const rows = localChannels.map(ch => ({
-        sno: ch.sno, channel_name: ch.name, handle: ch.handle, category: ch.cat,
-        youtube_url: ch.url, viral_score: parseInt(ch.score)||0, cpm_tier: ch.cpm,
-        team_size: parseInt(ch.team)||1, status: ch.status
-      }));
-      const { error } = await supabase.from('channels').upsert(rows, { onConflict: 'sno' });
-      if (error) throw error;
-      log(`✓ channels: ${rows.length} rows synced`);
-    } catch(e) { log(`✗ channels: ${e.message || e}`, false); }
-
-    // 2. SOCIAL LINKS — clear + reinsert (simplest)
-    try {
-      const rows = localSocial.map((s,i) => ({
-        platform: s.platform, handle: s.handle, url: s.url,
-        icon_key: s.icon, brand_color: s.color, display_order: i, is_active: true
-      }));
-      await supabase.from('social_links').delete().neq('platform','__none__');
-      const { error } = await supabase.from('social_links').insert(rows);
-      if (error) throw error;
-      log(`✓ social_links: ${rows.length} rows synced`);
-    } catch(e) { log(`✗ social_links: ${e.message || e}`, false); }
-
-    // 3. VIDEOS
-    try {
-      const rows = [];
-      Object.entries(localVideos).forEach(([sno, plMap]) => {
-        Object.entries(plMap || {}).forEach(([plIdx, vids]) => {
-          (vids || []).forEach((v, i) => rows.push({
-            channel_sno: sno, playlist_index: parseInt(plIdx),
-            playlist_name: localChannels.find(c=>c.sno===sno)?.playlists?.[parseInt(plIdx)] || '',
-            title: v.title, video_url: v.url, sort_order: i
-          }));
-        });
-      });
-      if (rows.length > 0) {
-        await supabase.from('videos').delete().neq('id','00000000-0000-0000-0000-000000000000');
-        const { error } = await supabase.from('videos').insert(rows);
-        if (error) throw error;
-      }
-      log(`✓ videos: ${rows.length} rows synced`);
-    } catch(e) { log(`✗ videos: ${e.message || e}`, false); }
-
-    // 4. WEBSITES
-    try {
-      const rows = (localWebsites || []).map(w => ({
-        id: w.id, title: w.title, url: w.url, description: w.description || '',
-        tags: w.tags || [], accent: w.accent || '#22d3ee'
-      }));
-      const { error } = await supabase.from('websites').upsert(rows, { onConflict: 'id' });
-      if (error) throw error;
-      log(`✓ websites: ${rows.length} rows synced`);
-    } catch(e) { log(`✗ websites: ${e.message || e} — make sure you ran the new SQL below`, false); }
-
-    // 5. POSTS
-    try {
-      const rows = (localPosts || []).map(p => ({
-        id: p.id, title: p.title, url: p.url, platform: p.platform,
-        cover: p.cover || '', summary: p.summary || '',
-        post_date: p.date && /^\d{4}-\d{2}-\d{2}$/.test(p.date) ? p.date : null
-      }));
-      const { error } = await supabase.from('posts').upsert(rows, { onConflict: 'id' });
-      if (error) throw error;
-      log(`✓ posts: ${rows.length} rows synced`);
-    } catch(e) { log(`✗ posts: ${e.message || e} — make sure you ran the new SQL below`, false); }
-
-    // 6. LOTTERY SUBSCRIBERS — across all channels
-    try {
-      const rows = [];
-      localChannels.forEach(ch => {
-        try {
-          const subs = JSON.parse(localStorage.getItem('pv_lot_subs_' + ch.sno) || '[]');
-          subs.forEach(s => rows.push({
-            sub_id: s.id, channel_sno: ch.sno,
-            name: s.name || '', handle: s.handle || '', email: s.email || '',
-            subscriber_id: s.subscriberId || '', phone: s.phone || ''
-          }));
-        } catch(e) {}
-      });
-      if (rows.length > 0) {
-        await supabase.from('lottery_subscribers').delete().neq('sub_id','__none__');
-        const { error } = await supabase.from('lottery_subscribers').insert(rows);
-        if (error) throw error;
-      }
-      log(`✓ lottery_subscribers: ${rows.length} rows synced`);
-    } catch(e) { log(`✗ lottery_subscribers: ${e.message || e} — make sure you ran the new SQL below`, false); }
-
-    // 7. LOTTERY HISTORY
-    try {
-      const hist = JSON.parse(localStorage.getItem('pv_lot_history') || '[]');
-      const rows = hist.map(h => ({
-        history_id: h.id, channel_name: h.channel, channel_sno: h.channelSno,
-        draw_date: h.date, pool_size: h.poolSize, winner_count: h.winnerCount,
-        winners: h.winners
-      }));
-      if (rows.length > 0) {
-        const { error } = await supabase.from('lottery_history').upsert(rows, { onConflict: 'history_id' });
-        if (error) throw error;
-      }
-      log(`✓ lottery_history: ${rows.length} rows synced`);
-    } catch(e) { log(`✗ lottery_history: ${e.message || e} — make sure you ran the new SQL below`, false); }
-
-    log('— Done —');
-    setSyncing(false);
   };
 
   return (
@@ -509,34 +394,9 @@ function ConfigTab({ supabaseUrl, supabaseKey, setSupabaseUrl, setSupabaseKey, o
         <AInput label="Supabase Project URL" value={supabaseUrl} onChange={setSupabaseUrl} placeholder="https://xxxx.supabase.co" />
         <AInput label="Supabase Anon Key" value={supabaseKey} onChange={setSupabaseKey} placeholder="eyJhbGciOiJIUzI1NiIsInR5c..." />
       </div>
-      <div style={{ display:'flex', gap:12, alignItems:'center', marginBottom:24, flexWrap:'wrap' }}>
+      <div style={{ display:'flex', gap:12, alignItems:'center', marginBottom:32 }}>
         <ABtn onClick={save} variant="primary">Connect Supabase</ABtn>
         {msg && <span style={{ fontSize:13, color:'#4ade80' }}>{msg}</span>}
-      </div>
-
-      {/* SYNC PANEL */}
-      <div style={{ background:'rgba(74,222,128,0.06)', border:'1px solid rgba(74,222,128,0.25)', borderRadius:14, padding:20, marginBottom:32 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:14, flexWrap:'wrap', marginBottom:14 }}>
-          <div>
-            <div style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:16, fontWeight:800, color:'#4ade80', margin:'0 0 4px' }}>📤 Sync All Data to Supabase</div>
-            <p style={{ color:'rgba(255,255,255,0.55)', fontSize:13, margin:0, maxWidth:520 }}>
-              Push everything currently in your browser (channels, videos, social links, lottery subs, websites, posts, draw history) to your Supabase tables in one go. Use this anytime your local data is ahead of Supabase. Existing rows are upserted by primary key — no duplicates.
-            </p>
-          </div>
-          <ABtn onClick={syncAll} variant="primary" style={{ background: syncing ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg,#4ade80,#22d3ee)' }}>
-            {syncing ? 'Syncing…' : '↑ Sync Now'}
-          </ABtn>
-        </div>
-        {syncLog.length > 0 && (
-          <div style={{ background:'rgba(0,0,0,0.4)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:10, padding:'10px 14px', fontFamily:'ui-monospace,Menlo,Consolas,monospace', fontSize:12, lineHeight:1.7, maxHeight:240, overflow:'auto' }}>
-            {syncLog.map((l, i) => (
-              <div key={i} style={{ color: l.ok ? 'rgba(255,255,255,0.7)' : '#fca5a5' }}>
-                <span style={{ color:'rgba(255,255,255,0.3)', marginRight:8 }}>{l.t}</span>{l.line}
-              </div>
-            ))}
-          </div>
-        )}
-        {!supabase && <div style={{ marginTop:10, fontSize:12, color:'#fca5a5' }}>⚠ Not connected yet. Click "Connect Supabase" above first.</div>}
       </div>
 
       <h4 style={{ fontFamily:"'Space Grotesk',sans-serif", color:'#c084fc', margin:'0 0 12px' }}>SQL Setup — Run in Supabase SQL Editor</h4>
@@ -593,434 +453,17 @@ CREATE TABLE IF NOT EXISTS social_links (
   is_active boolean DEFAULT true
 );
 
--- 5. WEBSITES TABLE (My Projects on home page)
-CREATE TABLE IF NOT EXISTS websites (
-  id text PRIMARY KEY,
-  title text NOT NULL,
-  url text NOT NULL,
-  description text,
-  tags text[],
-  accent text,
-  created_at timestamptz DEFAULT now()
-);
-
--- 6. POSTS TABLE (Medium / Blogger / Patreon links)
-CREATE TABLE IF NOT EXISTS posts (
-  id text PRIMARY KEY,
-  title text NOT NULL,
-  url text NOT NULL,
-  platform text,
-  cover text,
-  summary text,
-  post_date date,
-  created_at timestamptz DEFAULT now()
-);
-
--- 7. LOTTERY SUBSCRIBERS TABLE
-CREATE TABLE IF NOT EXISTS lottery_subscribers (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  sub_id text,
-  channel_sno text,
-  name text NOT NULL,
-  handle text,
-  email text,
-  subscriber_id text,
-  phone text,
-  created_at timestamptz DEFAULT now()
-);
-
--- 8. LOTTERY HISTORY TABLE (past draws)
-CREATE TABLE IF NOT EXISTS lottery_history (
-  history_id text PRIMARY KEY,
-  channel_name text,
-  channel_sno text,
-  draw_date text,
-  pool_size integer,
-  winner_count integer,
-  winners jsonb,
-  created_at timestamptz DEFAULT now()
-);
-
--- 9. Enable RLS + public read for all tables
+-- 5. Enable RLS (optional but recommended)
 ALTER TABLE channels ENABLE ROW LEVEL SECURITY;
 ALTER TABLE playlists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE videos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE social_links ENABLE ROW LEVEL SECURITY;
-ALTER TABLE websites ENABLE ROW LEVEL SECURITY;
-ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE lottery_subscribers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE lottery_history ENABLE ROW LEVEL SECURITY;
 
--- Public read policies
-DROP POLICY IF EXISTS "Public read channels" ON channels;
+-- Allow public read
 CREATE POLICY "Public read channels" ON channels FOR SELECT USING (true);
-DROP POLICY IF EXISTS "Public read playlists" ON playlists;
 CREATE POLICY "Public read playlists" ON playlists FOR SELECT USING (true);
-DROP POLICY IF EXISTS "Public read videos" ON videos;
 CREATE POLICY "Public read videos" ON videos FOR SELECT USING (true);
-DROP POLICY IF EXISTS "Public read social" ON social_links;
-CREATE POLICY "Public read social" ON social_links FOR SELECT USING (true);
-DROP POLICY IF EXISTS "Public read websites" ON websites;
-CREATE POLICY "Public read websites" ON websites FOR SELECT USING (true);
-DROP POLICY IF EXISTS "Public read posts" ON posts;
-CREATE POLICY "Public read posts" ON posts FOR SELECT USING (true);
-DROP POLICY IF EXISTS "Public read lottery_subs" ON lottery_subscribers;
-CREATE POLICY "Public read lottery_subs" ON lottery_subscribers FOR SELECT USING (true);
-DROP POLICY IF EXISTS "Public read lottery_history" ON lottery_history;
-CREATE POLICY "Public read lottery_history" ON lottery_history FOR SELECT USING (true);
-
--- IMPORTANT: write policies (anon key writes from the admin panel)
--- These allow the anon key to insert/update/delete. If you want to lock down writes
--- to authenticated users only, replace USING(true) with USING(auth.role() = 'authenticated').
-DROP POLICY IF EXISTS "Anon write channels" ON channels;
-CREATE POLICY "Anon write channels" ON channels FOR ALL USING (true) WITH CHECK (true);
-DROP POLICY IF EXISTS "Anon write playlists" ON playlists;
-CREATE POLICY "Anon write playlists" ON playlists FOR ALL USING (true) WITH CHECK (true);
-DROP POLICY IF EXISTS "Anon write videos" ON videos;
-CREATE POLICY "Anon write videos" ON videos FOR ALL USING (true) WITH CHECK (true);
-DROP POLICY IF EXISTS "Anon write social" ON social_links;
-CREATE POLICY "Anon write social" ON social_links FOR ALL USING (true) WITH CHECK (true);
-DROP POLICY IF EXISTS "Anon write websites" ON websites;
-CREATE POLICY "Anon write websites" ON websites FOR ALL USING (true) WITH CHECK (true);
-DROP POLICY IF EXISTS "Anon write posts" ON posts;
-CREATE POLICY "Anon write posts" ON posts FOR ALL USING (true) WITH CHECK (true);
-DROP POLICY IF EXISTS "Anon write lottery_subs" ON lottery_subscribers;
-CREATE POLICY "Anon write lottery_subs" ON lottery_subscribers FOR ALL USING (true) WITH CHECK (true);
-DROP POLICY IF EXISTS "Anon write lottery_history" ON lottery_history;
-CREATE POLICY "Anon write lottery_history" ON lottery_history FOR ALL USING (true) WITH CHECK (true);`}</pre>
-    </div>
-  );
-}
-
-// ============================================================
-// LOTTERY SUBSCRIBERS TAB — per-channel subscriber lists
-// ============================================================
-function LotterySubsTab({ localChannels }) {
-  const [selSno, setSelSno]   = React.useState(localChannels[0]?.sno || '');
-  const [subs, setSubs]       = React.useState([]);
-  const [paste, setPaste]     = React.useState('');
-  const [manForm, setManForm] = React.useState({ name:'', handle:'', email:'', subscriberId:'', phone:'' });
-  const [msg, setMsg]         = React.useState('');
-  const [search, setSearch]   = React.useState('');
-
-  const showMsg = (m, ok=true) => { setMsg({text:m,ok}); setTimeout(()=>setMsg(''),2500); };
-  const uid = () => Math.random().toString(36).slice(2)+Date.now().toString(36);
-
-  // Load subs whenever selected channel changes
-  React.useEffect(() => {
-    if (!selSno) return;
-    try { setSubs(JSON.parse(localStorage.getItem('pv_lot_subs_'+selSno) || '[]')); }
-    catch { setSubs([]); }
-  }, [selSno]);
-
-  const persist = (arr) => {
-    setSubs(arr);
-    localStorage.setItem('pv_lot_subs_'+selSno, JSON.stringify(arr));
-  };
-
-  const addManual = () => {
-    if (!manForm.name.trim()) { showMsg('Name is required', false); return; }
-    persist([...subs, { id:uid(), ...manForm }]);
-    setManForm({ name:'', handle:'', email:'', subscriberId:'', phone:'' });
-    showMsg('Subscriber added ✓');
-  };
-
-  const addPaste = () => {
-    const lines = paste.split('\n').map(l=>l.trim()).filter(Boolean);
-    const newSubs = lines.map(l => {
-      const parts = l.split(',').map(s=>s.trim());
-      return { id:uid(), name:parts[0]||l, handle:parts[1]||'', email:parts[2]||'', subscriberId:parts[3]||'', phone:parts[4]||'' };
-    });
-    if (newSubs.length === 0) { showMsg('Nothing to add', false); return; }
-    persist([...subs, ...newSubs]);
-    setPaste('');
-    showMsg(`Added ${newSubs.length} subscribers ✓`);
-  };
-
-  const delSub = (id) => persist(subs.filter(s => s.id !== id));
-  const clearAll = () => {
-    if (!confirm(`Delete ALL ${subs.length} subscribers?`)) return;
-    persist([]);
-  };
-
-  const filtered = subs.filter(s => {
-    const q = search.toLowerCase();
-    if (!q) return true;
-    return (s.name||'').toLowerCase().includes(q)
-      || (s.handle||'').toLowerCase().includes(q)
-      || (s.email||'').toLowerCase().includes(q);
-  });
-
-  const ch = localChannels.find(c=>c.sno===selSno);
-  const accent = ch ? (CAT_COLORS[ch.cat]?.accent || '#c084fc') : '#c084fc';
-
-  return (
-    <div>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20 }}>
-        <div>
-          <h3 style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:20, fontWeight:800, color:'#f0f0f8', margin:0 }}>Lottery Subscribers</h3>
-          <p style={{ color:'rgba(255,255,255,0.4)', fontSize:13, margin:'4px 0 0' }}>Each channel has its own private subscriber pool. Public viewers can see the list — only admin can edit.</p>
-        </div>
-        <a href="Lottery.html" target="_blank" rel="noreferrer" style={{ padding:'8px 14px', background:'rgba(192,132,252,0.15)', border:'1px solid rgba(192,132,252,0.3)', borderRadius:10, color:'#c084fc', fontSize:13, fontWeight:600, textDecoration:'none' }}>🎰 Open Lottery →</a>
-      </div>
-
-      {/* Channel picker */}
-      <div style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:14, padding:16, marginBottom:20 }}>
-        <label style={{ fontSize:11, fontWeight:600, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:1, display:'block', marginBottom:8 }}>Select channel</label>
-        <select value={selSno} onChange={e=>setSelSno(e.target.value)} style={{ width:'100%', padding:'10px 14px', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:10, color:'#e8e8f8', fontSize:14, outline:'none' }}>
-          {localChannels.map(c => {
-            const cnt = (() => { try { return (JSON.parse(localStorage.getItem('pv_lot_subs_'+c.sno) || '[]')).length; } catch { return 0; } })();
-            return <option key={c.sno} value={c.sno} style={{background:'#0e0e1a'}}>{c.name} — {cnt} sub{cnt!==1?'s':''}</option>;
-          })}
-        </select>
-      </div>
-
-      {ch && (
-        <div style={{ background:`${accent}10`, border:`1px solid ${accent}33`, borderRadius:16, padding:'16px 20px', marginBottom:20, display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:12 }}>
-          <div>
-            <div style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:18, fontWeight:800, color:accent }}>{ch.name}</div>
-            <div style={{ fontSize:12, color:'rgba(255,255,255,0.45)' }}>{ch.handle} · {ch.cat}</div>
-          </div>
-          <div style={{ textAlign:'right' }}>
-            <div style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:32, fontWeight:900, color:accent, lineHeight:1 }}>{subs.length}</div>
-            <div style={{ fontSize:11, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:1 }}>subscribers</div>
-          </div>
-        </div>
-      )}
-
-      {/* Add manual */}
-      <div style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:14, padding:18, marginBottom:14 }}>
-        <h4 style={{ color:'#c084fc', margin:'0 0 12px', fontSize:13, fontFamily:"'Space Grotesk',sans-serif", textTransform:'uppercase', letterSpacing:1 }}>+ Add One Subscriber</h4>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:10, marginBottom:10 }}>
-          <AInput label="Name *"        value={manForm.name}         onChange={v=>setManForm({...manForm,name:v})}         placeholder="John Doe" />
-          <AInput label="Handle"        value={manForm.handle}       onChange={v=>setManForm({...manForm,handle:v})}       placeholder="@johndoe" />
-          <AInput label="Email"         value={manForm.email}        onChange={v=>setManForm({...manForm,email:v})}        placeholder="john@gmail.com" />
-          <AInput label="Subscriber ID" value={manForm.subscriberId} onChange={v=>setManForm({...manForm,subscriberId:v})} placeholder="UCxxxxxx" />
-          <AInput label="Phone"         value={manForm.phone}        onChange={v=>setManForm({...manForm,phone:v})}        placeholder="+91 9876543210" />
-        </div>
-        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
-          <ABtn onClick={addManual} variant="primary">+ Add Subscriber</ABtn>
-          {msg && <span style={{ fontSize:13, color: msg.ok?'#4ade80':'#f87171' }}>{msg.text}</span>}
-        </div>
-      </div>
-
-      {/* Bulk paste */}
-      <div style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:14, padding:18, marginBottom:20 }}>
-        <h4 style={{ color:'#22d3ee', margin:'0 0 8px', fontSize:13, fontFamily:"'Space Grotesk',sans-serif", textTransform:'uppercase', letterSpacing:1 }}>📝 Bulk Paste</h4>
-        <p style={{ fontSize:12, color:'rgba(255,255,255,0.45)', margin:'0 0 10px' }}>One per line. Format: <code style={{ color:'#22d3ee' }}>Name, @handle, email, subscriberId, phone</code> — only Name is required.</p>
-        <textarea value={paste} onChange={e=>setPaste(e.target.value)} rows={6} placeholder={"John Doe, @johndoe, john@gmail.com\nJane Smith\nAlex Kumar, @alex"} style={{ width:'100%', padding:'10px 14px', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:10, color:'#e8e8f8', fontSize:13, outline:'none', fontFamily:'Inter,sans-serif', resize:'vertical', lineHeight:1.6, marginBottom:10 }}/>
-        <div style={{ display:'flex', gap:10 }}>
-          <ABtn onClick={addPaste} variant="primary">Add {paste.split('\n').filter(l=>l.trim()).length} Subscribers</ABtn>
-          {subs.length>0 && <ABtn onClick={clearAll} variant="danger">Clear all subs for this channel</ABtn>}
-        </div>
-      </div>
-
-      {/* List */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-        <h4 style={{ color:'#e8e8f8', margin:0, fontSize:14, fontFamily:"'Space Grotesk',sans-serif" }}>Current list ({subs.length})</h4>
-        {subs.length>0 && <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search names..." style={{ padding:'6px 12px', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10, color:'#e8e8f8', fontSize:12, outline:'none', width:200 }}/>}
-      </div>
-      {subs.length === 0 ? (
-        <div style={{ padding:'32px', textAlign:'center', color:'rgba(255,255,255,0.3)', fontSize:14, background:'rgba(255,255,255,0.02)', border:'1px dashed rgba(255,255,255,0.08)', borderRadius:14 }}>
-          <div style={{ fontSize:32, marginBottom:10 }}>👥</div>
-          No subscribers in this channel's pool yet — add some above
-        </div>
-      ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:400, overflowY:'auto' }}>
-          {filtered.map((s,i) => (
-            <div key={s.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px', background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10 }}>
-              <div style={{ width:26, height:26, borderRadius:8, background:`${accent}22`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color:accent, flexShrink:0 }}>{i+1}</div>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontSize:13, fontWeight:600, color:'#e8e8f8' }}>{s.name}</div>
-                <div style={{ fontSize:11, color:'rgba(255,255,255,0.3)', display:'flex', gap:10, flexWrap:'wrap', marginTop:2 }}>
-                  {s.handle && <span>{s.handle}</span>}
-                  {s.email && <span>{s.email}</span>}
-                  {s.phone && <span>{s.phone}</span>}
-                  {s.subscriberId && <span>ID: {s.subscriberId}</span>}
-                </div>
-              </div>
-              <ABtn onClick={()=>delSub(s.id)} variant="danger" size="sm">×</ABtn>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ============================================================
-// WEBSITES TAB — manage projects shown on the home page
-// ============================================================
-function WebsitesTab({ localWebsites, setLocalWebsites }) {
-  const [editing, setEditing] = React.useState(null);
-  const [form, setForm]       = React.useState({ id:'', title:'', url:'', description:'', tags:'', accent:'#22d3ee' });
-  const [msg, setMsg]         = React.useState('');
-
-  const startNew  = () => { setEditing('NEW'); setForm({ id:Date.now().toString(36), title:'', url:'', description:'', tags:'', accent:'#22d3ee' }); };
-  const startEdit = (w) => { setEditing(w.id); setForm({ ...w, tags:(w.tags||[]).join(', ') }); };
-  const cancel    = () => { setEditing(null); setForm({}); };
-  const showMsg = (m) => { setMsg(m); setTimeout(()=>setMsg(''),2000); };
-
-  const save = () => {
-    if (!form.title || !form.url) { showMsg('Title & URL required'); return; }
-    const cleaned = { ...form, tags: form.tags.split(',').map(s=>s.trim()).filter(Boolean) };
-    const updated = editing === 'NEW' ? [...localWebsites, cleaned] : localWebsites.map(w => w.id===editing ? cleaned : w);
-    setLocalWebsites(updated);
-    setEditing(null); setForm({});
-    showMsg('Saved ✓');
-  };
-
-  const del = (id) => {
-    if (!confirm('Delete this website?')) return;
-    setLocalWebsites(localWebsites.filter(w=>w.id!==id));
-  };
-
-  return (
-    <div>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-        <div>
-          <h3 style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:20, fontWeight:800, color:'#f0f0f8', margin:0 }}>My Projects (Websites)</h3>
-          <p style={{ color:'rgba(255,255,255,0.4)', fontSize:13, margin:'4px 0 0' }}>Live websites shown on the home page. Thumbnails are auto-generated from your URL.</p>
-        </div>
-        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
-          {msg && <span style={{ fontSize:13, color:'#4ade80' }}>{msg}</span>}
-          <ABtn onClick={startNew} variant="primary">+ Add Website</ABtn>
-        </div>
-      </div>
-
-      {editing && (
-        <div style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:16, padding:20, marginBottom:18 }}>
-          <h4 style={{ color:'#22d3ee', margin:'0 0 14px', fontSize:14, fontFamily:"'Space Grotesk',sans-serif" }}>{editing==='NEW' ? 'New Website' : 'Edit Website'}</h4>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
-            <AInput label="Title *" value={form.title||''} onChange={v=>setForm({...form,title:v})} placeholder="My Cool Project" />
-            <AInput label="URL *" value={form.url||''} onChange={v=>setForm({...form,url:v})} placeholder="https://my-project.vercel.app" />
-            <AInput label="Tags (comma separated)" value={form.tags||''} onChange={v=>setForm({...form,tags:v})} placeholder="React, Tailwind, Live" />
-            <AInput label="Accent color" value={form.accent||'#22d3ee'} onChange={v=>setForm({...form,accent:v})} placeholder="#22d3ee" />
-          </div>
-          <ATextarea label="Short description" value={form.description||''} onChange={v=>setForm({...form,description:v})} rows={2} placeholder="What does this project do? (1-2 lines)" />
-          <div style={{ display:'flex', gap:10, marginTop:14 }}>
-            <ABtn onClick={save} variant="primary">Save Website</ABtn>
-            <ABtn onClick={cancel} variant="ghost">Cancel</ABtn>
-          </div>
-        </div>
-      )}
-
-      {localWebsites.length === 0 ? (
-        <div style={{ padding:'40px', textAlign:'center', color:'rgba(255,255,255,0.3)', fontSize:14, background:'rgba(255,255,255,0.02)', border:'1px dashed rgba(255,255,255,0.08)', borderRadius:14 }}>
-          <div style={{ fontSize:36, marginBottom:10 }}>🌐</div>
-          No websites yet — click "+ Add Website" above to feature your first project on the home page.
-        </div>
-      ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-          {localWebsites.map(w => (
-            <div key={w.id} style={{ display:'flex', alignItems:'center', gap:14, padding:'12px 16px', background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:12 }}>
-              <div style={{ width:48, height:36, borderRadius:8, background:`${w.accent||'#22d3ee'}22`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>🌐</div>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontSize:14, fontWeight:700, color:'#e8e8f8' }}>{w.title}</div>
-                <div style={{ fontSize:11, color:'rgba(255,255,255,0.35)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{w.url}</div>
-              </div>
-              <a href={w.url} target="_blank" rel="noreferrer" style={{ padding:'5px 10px', background:'rgba(34,211,238,0.12)', border:'1px solid rgba(34,211,238,0.25)', borderRadius:8, fontSize:11, color:'#22d3ee', textDecoration:'none' }}>Open</a>
-              <ABtn onClick={()=>startEdit(w)} variant="ghost" size="sm">Edit</ABtn>
-              <ABtn onClick={()=>del(w.id)} variant="danger" size="sm">×</ABtn>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ============================================================
-// POSTS TAB — Medium / Blogger / Patreon / etc.
-// ============================================================
-function PostsTab({ localPosts, setLocalPosts }) {
-  const [editing, setEditing] = React.useState(null);
-  const [form, setForm]       = React.useState({ id:'', title:'', url:'', platform:'Medium', cover:'', summary:'', date:'' });
-  const [msg, setMsg]         = React.useState('');
-  const PLATFORMS = ['Medium','Blogger','Patreon','Substack','Quora','LinkedIn','Other'];
-
-  const startNew  = () => { setEditing('NEW'); setForm({ id:Date.now().toString(36), title:'', url:'', platform:'Medium', cover:'', summary:'', date:new Date().toISOString().slice(0,10) }); };
-  const startEdit = (p) => { setEditing(p.id); setForm({ ...p }); };
-  const cancel    = () => { setEditing(null); setForm({}); };
-  const showMsg = (m) => { setMsg(m); setTimeout(()=>setMsg(''),2000); };
-
-  const save = () => {
-    if (!form.title || !form.url) { showMsg('Title & URL required'); return; }
-    const updated = editing === 'NEW' ? [...localPosts, form] : localPosts.map(p => p.id===editing ? form : p);
-    setLocalPosts(updated);
-    setEditing(null); setForm({});
-    showMsg('Saved ✓');
-  };
-
-  const del = (id) => {
-    if (!confirm('Delete this post?')) return;
-    setLocalPosts(localPosts.filter(p=>p.id!==id));
-  };
-
-  const platformColor = (p) => ({
-    'Medium':'#02b875','Blogger':'#fb923c','Patreon':'#f96854','Substack':'#ff6719','Quora':'#b92b27','LinkedIn':'#0a66c2','Other':'#c084fc'
-  }[p] || '#c084fc');
-
-  return (
-    <div>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-        <div>
-          <h3 style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:20, fontWeight:800, color:'#f0f0f8', margin:0 }}>Latest Posts</h3>
-          <p style={{ color:'rgba(255,255,255,0.4)', fontSize:13, margin:'4px 0 0' }}>Articles from Medium, Blogger, Patreon and other platforms — shown on the home page.</p>
-        </div>
-        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
-          {msg && <span style={{ fontSize:13, color:'#4ade80' }}>{msg}</span>}
-          <ABtn onClick={startNew} variant="primary">+ Add Post</ABtn>
-        </div>
-      </div>
-
-      {editing && (
-        <div style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:16, padding:20, marginBottom:18 }}>
-          <h4 style={{ color:'#c084fc', margin:'0 0 14px', fontSize:14, fontFamily:"'Space Grotesk',sans-serif" }}>{editing==='NEW' ? 'New Post' : 'Edit Post'}</h4>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
-            <AInput label="Title *" value={form.title||''} onChange={v=>setForm({...form,title:v})} placeholder="My latest article" />
-            <AInput label="URL *"   value={form.url||''}   onChange={v=>setForm({...form,url:v})}   placeholder="https://medium.com/..." />
-            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-              <label style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.45)', textTransform:'uppercase', letterSpacing:1 }}>Platform</label>
-              <select value={form.platform||'Medium'} onChange={e=>setForm({...form,platform:e.target.value})} style={{ padding:'10px 14px', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:10, color:'#e8e8f8', fontSize:14, outline:'none' }}>
-                {PLATFORMS.map(p => <option key={p} value={p} style={{background:'#0e0e1a'}}>{p}</option>)}
-              </select>
-            </div>
-            <AInput label="Date" value={form.date||''} onChange={v=>setForm({...form,date:v})} type="date" />
-            <AInput label="Cover image URL (optional)" value={form.cover||''} onChange={v=>setForm({...form,cover:v})} placeholder="https://..." style={{gridColumn:'1 / -1'}}/>
-          </div>
-          <ATextarea label="Summary / preview" value={form.summary||''} onChange={v=>setForm({...form,summary:v})} rows={3} placeholder="2–3 line summary that shows on the home page..." />
-          <div style={{ display:'flex', gap:10, marginTop:14 }}>
-            <ABtn onClick={save} variant="primary">Save Post</ABtn>
-            <ABtn onClick={cancel} variant="ghost">Cancel</ABtn>
-          </div>
-        </div>
-      )}
-
-      {localPosts.length === 0 ? (
-        <div style={{ padding:'40px', textAlign:'center', color:'rgba(255,255,255,0.3)', fontSize:14, background:'rgba(255,255,255,0.02)', border:'1px dashed rgba(255,255,255,0.08)', borderRadius:14 }}>
-          <div style={{ fontSize:36, marginBottom:10 }}>📝</div>
-          No posts yet — click "+ Add Post" above to share your latest article.
-        </div>
-      ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-          {localPosts.map(p => {
-            const col = platformColor(p.platform);
-            return (
-              <div key={p.id} style={{ display:'flex', alignItems:'center', gap:14, padding:'12px 16px', background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:12 }}>
-                <div style={{ minWidth:64, padding:'4px 10px', borderRadius:50, background:`${col}22`, border:`1px solid ${col}44`, color:col, fontSize:11, fontWeight:700, textAlign:'center' }}>{p.platform}</div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:14, fontWeight:700, color:'#e8e8f8' }}>{p.title}</div>
-                  <div style={{ fontSize:11, color:'rgba(255,255,255,0.35)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{p.date} · {p.url}</div>
-                </div>
-                <a href={p.url} target="_blank" rel="noreferrer" style={{ padding:'5px 10px', background:`${col}22`, border:`1px solid ${col}44`, borderRadius:8, fontSize:11, color:col, textDecoration:'none' }}>Open</a>
-                <ABtn onClick={()=>startEdit(p)} variant="ghost" size="sm">Edit</ABtn>
-                <ABtn onClick={()=>del(p.id)} variant="danger" size="sm">×</ABtn>
-              </div>
-            );
-          })}
-        </div>
-      )}
+CREATE POLICY "Public read social" ON social_links FOR SELECT USING (true);`}</pre>
     </div>
   );
 }
@@ -1050,44 +493,33 @@ function DashStats({ channels, videos }) {
 }
 
 // ---- MAIN ADMIN PANEL ----
-function AdminPanel({ onBack, supabase, supabaseUrl, supabaseKey, setSupabaseUrl, setSupabaseKey, onConnectSupabase, localChannels, setLocalChannels, localVideos, setLocalVideos, localSocial, setLocalSocial, localWebsites, setLocalWebsites, localPosts, setLocalPosts }) {
+function AdminPanel({ onBack, supabase, supabaseUrl, supabaseKey, setSupabaseUrl, setSupabaseKey, onConnectSupabase, localChannels, setLocalChannels, localVideos, setLocalVideos, localSocial, setLocalSocial }) {
   const [tab, setTab] = React.useState('dashboard');
   const tabs = [
     { id:'dashboard', label:'Dashboard' },
     { id:'channels',  label:'Channels' },
     { id:'videos',    label:'Videos' },
-    { id:'import',    label:'📥 Import / Data' },
-    { id:'search',    label:'🔎 Search' },
-    { id:'lotterysubs', label:'🎰 Lottery Subs' },
-    { id:'websites',  label:'🌐 Websites' },
-    { id:'posts',     label:'📝 Posts' },
     { id:'social',    label:'Social Links' },
     { id:'config',    label:'⚙ Supabase' },
   ];
 
-  const handleLogout = () => {
-    try { localStorage.removeItem('pv_is_admin'); } catch(e){}
-    onBack();
-  };
-
   return (
     <div style={{ minHeight:'100vh', background:'#07071280', position:'relative', zIndex:1 }}>
       {/* Top bar */}
-      <div style={{ borderBottom:'1px solid rgba(255,255,255,0.08)', padding:'16px 24px', display:'flex', alignItems:'center', gap:16, background:'rgba(0,0,0,0.3)', backdropFilter:'blur(12px)', position:'sticky', top:0, zIndex:100, flexWrap:'wrap' }}>
+      <div style={{ borderBottom:'1px solid rgba(255,255,255,0.08)', padding:'16px 24px', display:'flex', alignItems:'center', gap:16, background:'rgba(0,0,0,0.3)', backdropFilter:'blur(12px)', position:'sticky', top:0, zIndex:100 }}>
         <button onClick={onBack} style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10, padding:'6px 14px', color:'rgba(255,255,255,0.6)', cursor:'pointer', fontSize:13 }}>← Public</button>
         <div style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:16, fontWeight:800, color:'#c084fc' }}>PUJIVERSE ADMIN</div>
-        <div style={{ display:'flex', gap:4, marginLeft:12, flex:1, flexWrap:'wrap' }}>
+        <div style={{ display:'flex', gap:4, marginLeft:24, flex:1 }}>
           {tabs.map(t => (
             <button key={t.id} onClick={()=>setTab(t.id)} style={{
-              padding:'6px 12px', borderRadius:8, border:'none', cursor:'pointer', fontSize:12, fontWeight:600,
+              padding:'6px 14px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:600,
               background: tab===t.id ? 'rgba(192,132,252,0.15)' : 'transparent',
               color: tab===t.id ? '#c084fc' : 'rgba(255,255,255,0.45)',
               transition:'all 0.15s'
             }}>{t.label}</button>
           ))}
         </div>
-        {supabase && <div style={{ fontSize:12, color:'#4ade80', display:'flex', alignItems:'center', gap:5 }}><span style={{ width:7, height:7, borderRadius:'50%', background:'#4ade80', display:'inline-block' }}/>Supabase</div>}
-        <button onClick={handleLogout} style={{ padding:'5px 12px', background:'rgba(239,68,68,0.12)', border:'1px solid rgba(239,68,68,0.25)', borderRadius:8, color:'#f87171', cursor:'pointer', fontSize:12, fontWeight:600 }}>Logout</button>
+        {supabase && <div style={{ fontSize:12, color:'#4ade80', display:'flex', alignItems:'center', gap:5 }}><span style={{ width:7, height:7, borderRadius:'50%', background:'#4ade80', display:'inline-block' }}/>Supabase Connected</div>}
       </div>
 
       {/* Content */}
@@ -1098,13 +530,10 @@ function AdminPanel({ onBack, supabase, supabaseUrl, supabaseKey, setSupabaseUrl
           <DashStats channels={localChannels} videos={localVideos} />
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
             {[{ id:'channels',label:'Manage Channels',icon:'📺',desc:'Edit channel details, playlists, handles and URLs'},
-              {id:'videos',label:'Add Videos',icon:'🎬',desc:'Add video links to any channel playlist (with thumbnails)'},
-              {id:'lotterysubs',label:'Lottery Subscribers',icon:'🎰',desc:'Per-channel subscriber lists — only admin can add names'},
-              {id:'websites',label:'My Websites',icon:'🌐',desc:`Showcase live projects on home page · ${localWebsites.length} added`},
-              {id:'posts',label:'Latest Posts',icon:'📝',desc:`Medium / Blogger / Patreon posts · ${localPosts.length} added`},
+              {id:'videos',label:'Add Videos',icon:'🎬',desc:'Add video links to any channel playlist'},
               {id:'social',label:'Social Links',icon:'🔗',desc:'Update your social media platform links'},
               {id:'config',label:'Supabase Config',icon:'🗄️',desc:'Connect your database for persistent storage'},
-              {id:'lottery',label:'Run Live Draw',icon:'🎬',desc:'Open the live lottery draw screen — stream ready',external:'Lottery.html'},
+              {id:'lottery',label:'Lottery System',icon:'🎰',desc:'Run monthly subscriber draws per channel — live stream ready',external:'Lottery.html'},
             ].map(item => (
               <div key={item.id} onClick={()=>item.external ? window.open(item.external,'_blank') : setTab(item.id)} style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:16, padding:'20px', cursor:'pointer', transition:'all 0.2s' }}
                 onMouseEnter={e=>{e.currentTarget.style.background='rgba(192,132,252,0.08)'; e.currentTarget.style.border='1px solid rgba(192,132,252,0.25)';}}
@@ -1116,22 +545,10 @@ function AdminPanel({ onBack, supabase, supabaseUrl, supabaseKey, setSupabaseUrl
             ))}
           </div>
         </>}
-        {tab === 'import'      && <ImportTab supabase={supabase} onDataChanged={()=>{ if(window.pvReloadData) window.pvReloadData(); }} />}
-        {tab === 'search'      && <SearchTab supabase={supabase} />}
-        {tab === 'channels'    && <ChannelsTab supabase={supabase} localChannels={localChannels} setLocalChannels={setLocalChannels} />}
-        {tab === 'videos'      && <VideosTab supabase={supabase} localChannels={localChannels} localVideos={localVideos} setLocalVideos={setLocalVideos} />}
-        {tab === 'lotterysubs' && <LotterySubsTab localChannels={localChannels} />}
-        {tab === 'websites'    && <WebsitesTab localWebsites={localWebsites} setLocalWebsites={setLocalWebsites} />}
-        {tab === 'posts'       && <PostsTab localPosts={localPosts} setLocalPosts={setLocalPosts} />}
-        {tab === 'social'      && <SocialTab localSocial={localSocial} setLocalSocial={setLocalSocial} />}
-        {tab === 'config'      && <ConfigTab supabaseUrl={supabaseUrl} supabaseKey={supabaseKey} setSupabaseUrl={setSupabaseUrl} setSupabaseKey={setSupabaseKey} onConnect={onConnectSupabase} supabase={supabase} localChannels={localChannels} localVideos={localVideos} localSocial={localSocial} localWebsites={localWebsites} localPosts={localPosts} />}
-      </div>
-    </div>
-  );
-}
-
-Object.assign(window, { AdminPanel, LoginModal });
- setSupabaseKey={setSupabaseKey} onConnect={onConnectSupabase} supabase={supabase} localChannels={localChannels} localVideos={localVideos} localSocial={localSocial} localWebsites={localWebsites} localPosts={localPosts} />}
+        {tab === 'channels' && <ChannelsTab supabase={supabase} localChannels={localChannels} setLocalChannels={setLocalChannels} />}
+        {tab === 'videos'   && <VideosTab supabase={supabase} localChannels={localChannels} localVideos={localVideos} setLocalVideos={setLocalVideos} />}
+        {tab === 'social'   && <SocialTab localSocial={localSocial} setLocalSocial={setLocalSocial} />}
+        {tab === 'config'   && <ConfigTab supabaseUrl={supabaseUrl} supabaseKey={supabaseKey} setSupabaseUrl={setSupabaseUrl} setSupabaseKey={setSupabaseKey} onConnect={onConnectSupabase} />}
       </div>
     </div>
   );

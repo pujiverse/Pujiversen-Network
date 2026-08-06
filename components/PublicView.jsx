@@ -66,18 +66,6 @@ function ChannelCard({ ch, onClick }) {
   );
 }
 
-// --- Helper: Extract YouTube video ID from any YouTube URL ---
-function ytId(url) {
-  if (!url) return null;
-  const m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/);
-  return m ? m[1] : null;
-}
-
-// --- Helper: Build a YouTube search URL for a playlist title (fallback when no direct URL) ---
-function plSearchUrl(channel, plTitle) {
-  return `https://www.youtube.com/${channel.handle}/search?query=${encodeURIComponent(plTitle)}`;
-}
-
 // --- Playlist Modal ---
 function PlaylistModal({ ch, onClose, videos }) {
   const col = CAT_COLORS[ch.cat] || CAT_COLORS["Education"];
@@ -98,11 +86,11 @@ function PlaylistModal({ ch, onClose, videos }) {
     }} onClick={onClose}>
       <div style={{
         background:'#0e0e1a', border:'1px solid rgba(255,255,255,0.12)',
-        borderRadius:24, width:'100%', maxWidth:880, maxHeight:'88vh',
+        borderRadius:24, width:'100%', maxWidth:760, maxHeight:'85vh',
         overflow:'auto', padding:32
       }} onClick={e=>e.stopPropagation()}>
         {/* Header */}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:24, gap:16, flexWrap:'wrap' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:24 }}>
           <div>
             <div style={{ display:'inline-block', fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:1, color:col.accent, background:`${col.badge}33`, padding:'3px 10px', borderRadius:20, marginBottom:8 }}>{ch.cat}</div>
             <h2 style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:24, fontWeight:800, color:'#f0f0f8', margin:'0 0 4px' }}>{ch.name}</h2>
@@ -112,9 +100,6 @@ function PlaylistModal({ ch, onClose, videos }) {
             <a href={ch.url} target="_blank" rel="noreferrer" style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'8px 16px', background:'rgba(255,0,0,0.15)', border:'1px solid rgba(255,0,0,0.3)', borderRadius:10, fontSize:13, color:'#ff6b6b', textDecoration:'none', fontWeight:600 }}>
               <SocialIcon icon="yt" size={14}/> Open Channel
             </a>
-            <a href={`${ch.url}/playlists`} target="_blank" rel="noreferrer" style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'8px 16px', background:`${col.badge}33`, border:`1px solid ${col.accent}55`, borderRadius:10, fontSize:13, color:col.accent, textDecoration:'none', fontWeight:600 }}>
-              All Playlists ↗
-            </a>
             <button onClick={onClose} style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10, width:38, height:38, color:'rgba(255,255,255,0.6)', cursor:'pointer', fontSize:18, display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
           </div>
         </div>
@@ -122,252 +107,42 @@ function PlaylistModal({ ch, onClose, videos }) {
         {/* Playlists */}
         <h3 style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:14, fontWeight:600, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:1, marginBottom:14 }}>Playlists ({ch.playlists.length})</h3>
         <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom: selPl!==null ? 24 : 0 }}>
-          {ch.playlists.map((pl, i) => {
-            const vCount = (videos[ch.sno]?.[i] || []).length;
-            const isOpen = selPl===i;
-            // Use first video URL as a representative cover thumbnail
-            const firstVid = (videos[ch.sno]?.[i] || [])[0];
-            const coverId = firstVid ? ytId(firstVid.url) : null;
-            return (
-              <div key={i} style={{
-                background: isOpen ? `${col.badge}22` : 'rgba(255,255,255,0.03)',
-                border: `1px solid ${isOpen ? col.accent+'44' : 'rgba(255,255,255,0.07)'}`,
-                borderRadius:12, transition:'all 0.15s', overflow:'hidden'
-              }}>
-                <div onClick={() => setSelPl(isOpen ? null : i)} style={{
-                  display:'flex', alignItems:'center', gap:12, padding:'14px 16px', cursor:'pointer'
-                }}>
-                  {coverId ? (
-                    <div style={{ width:60, height:34, borderRadius:6, background:`url(https://img.youtube.com/vi/${coverId}/mqdefault.jpg) center/cover, ${col.badge}33`, flexShrink:0, position:'relative' }}>
-                      <div style={{ position:'absolute', inset:0, borderRadius:6, background:'rgba(0,0,0,0.25)' }}/>
-                    </div>
-                  ) : (
-                    <div style={{ width:36, height:36, borderRadius:8, background:`${col.badge}44`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:col.accent, flexShrink:0 }}>{i+1}</div>
-                  )}
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:14, fontWeight:600, color:'#e8e8f8' }}>{pl}</div>
-                    <div style={{ fontSize:12, color:'rgba(255,255,255,0.4)', marginTop:2 }}>{vCount} video{vCount!==1?'s':''}</div>
-                  </div>
-                  <a href={plSearchUrl(ch, pl)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} title="Open this playlist on YouTube"
-                     style={{ padding:'4px 10px', background:'rgba(255,0,0,0.12)', border:'1px solid rgba(255,0,0,0.25)', borderRadius:8, fontSize:11, color:'#ff6b6b', textDecoration:'none', whiteSpace:'nowrap' }}>
-                    ▶ Open
-                  </a>
-                  <span style={{ color:'rgba(255,255,255,0.3)', fontSize:12, marginLeft:6 }}>{isOpen ? '▲' : '▼'}</span>
-                </div>
-
-                {/* Inline videos when expanded — YouTube-style cards with thumbnails */}
-                {isOpen && (
-                  <div style={{ padding:'4px 14px 14px' }}>
-                    {vCount === 0 ? (
-                      <div style={{ marginTop:8, padding:'18px 16px', background:'rgba(255,255,255,0.02)', borderRadius:10, fontSize:13, color:'rgba(255,255,255,0.35)', textAlign:'center' }}>
-                        No videos added yet — admin can add them from the dashboard
-                      </div>
-                    ) : (
-                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:10 }}>
-                        {plVideos.map((v, vi) => {
-                          const id = ytId(v.url);
-                          return (
-                            <a key={vi} href={v.url} target="_blank" rel="noreferrer" style={{ display:'flex', flexDirection:'column', gap:8, padding:8, background:'rgba(255,255,255,0.025)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:10, textDecoration:'none', transition:'all 0.15s' }}
-                              onMouseEnter={e=>{ e.currentTarget.style.background='rgba(255,255,255,0.06)'; e.currentTarget.style.transform='translateY(-2px)';}}
-                              onMouseLeave={e=>{ e.currentTarget.style.background='rgba(255,255,255,0.025)'; e.currentTarget.style.transform='translateY(0)';}}>
-                              <div style={{ aspectRatio:'16/9', borderRadius:8, background: id ? `url(https://img.youtube.com/vi/${id}/mqdefault.jpg) center/cover` : `${col.badge}33`, position:'relative', overflow:'hidden' }}>
-                                <div style={{ position:'absolute', bottom:6, right:6, padding:'2px 6px', borderRadius:4, background:'rgba(0,0,0,0.75)', color:'#fff', fontSize:10, fontWeight:600, display:'flex', alignItems:'center', gap:4 }}>
-                                  <SocialIcon icon="yt" size={9}/> YT
-                                </div>
-                              </div>
-                              <div style={{ fontSize:12, fontWeight:600, color:'#d0d0e8', lineHeight:1.4, display:'-webkit-box', WebkitBoxOrient:'vertical', WebkitLineClamp:2, overflow:'hidden' }}>{v.title}</div>
-                            </a>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
+          {ch.playlists.map((pl, i) => (
+            <div key={i} onClick={() => setSelPl(selPl===i ? null : i)} style={{
+              display:'flex', alignItems:'center', gap:12, padding:'14px 16px',
+              background: selPl===i ? `${col.badge}22` : 'rgba(255,255,255,0.03)',
+              border: `1px solid ${selPl===i ? col.accent+'44' : 'rgba(255,255,255,0.07)'}`,
+              borderRadius:12, cursor:'pointer', transition:'all 0.15s'
+            }}>
+              <div style={{ width:28, height:28, borderRadius:8, background:`${col.badge}44`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:col.accent, flexShrink:0 }}>{i+1}</div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:14, fontWeight:600, color:'#e8e8f8' }}>{pl}</div>
+                {plVideos.length > 0 && selPl===i && <div style={{ fontSize:12, color:'rgba(255,255,255,0.4)', marginTop:2 }}>{plVideos.length} video{plVideos.length!==1?'s':''}</div>}
               </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// --- Lottery Widget (compact, on main page) ---
-function LotteryWidget() {
-  const [history, setHistory] = React.useState([]);
-  const [counts, setCounts] = React.useState([]);
-
-  React.useEffect(() => {
-    try { setHistory(JSON.parse(localStorage.getItem('pv_lot_history') || '[]')); } catch { setHistory([]); }
-    // Build per-channel sub counts
-    const c = (typeof CHANNELS !== 'undefined' ? CHANNELS : []).map(ch => {
-      try { return { sno:ch.sno, name:ch.name, cat:ch.cat, count:(JSON.parse(localStorage.getItem('pv_lot_subs_'+ch.sno) || '[]')).length }; }
-      catch { return { sno:ch.sno, name:ch.name, cat:ch.cat, count:0 }; }
-    });
-    setCounts(c);
-  }, []);
-
-  const totalSubs = counts.reduce((a,c)=>a+c.count, 0);
-  const activeChannels = counts.filter(c=>c.count>0).length;
-  const lastDraw = history[history.length-1];
-  const top5 = [...counts].sort((a,b)=>b.count-a.count).slice(0,5).filter(c=>c.count>0);
-
-  return (
-    <div style={{ maxWidth:1100, margin:'0 auto', padding:'24px 24px 56px' }}>
-      <div style={{ background:'linear-gradient(135deg, rgba(192,132,252,0.08), rgba(34,211,238,0.05))', border:'1px solid rgba(192,132,252,0.18)', borderRadius:24, padding:'28px 32px', position:'relative', overflow:'hidden' }}>
-        {/* Decorative glow */}
-        <div style={{ position:'absolute', top:-40, right:-40, width:200, height:200, borderRadius:'50%', background:'radial-gradient(circle, rgba(192,132,252,0.15), transparent 70%)', pointerEvents:'none' }}/>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:16, marginBottom:18, position:'relative' }}>
-          <div>
-            <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'4px 12px', borderRadius:50, background:'rgba(192,132,252,0.15)', border:'1px solid rgba(192,132,252,0.3)', marginBottom:10 }}>
-              <span style={{ width:6, height:6, borderRadius:'50%', background:'#c084fc', boxShadow:'0 0 10px #c084fc' }}/>
-              <span style={{ fontSize:11, fontWeight:700, color:'#c084fc', letterSpacing:2, textTransform:'uppercase' }}>Lottery System</span>
+              <span style={{ color:'rgba(255,255,255,0.3)', fontSize:12 }}>{selPl===i ? '▲' : '▼'}</span>
             </div>
-            <h2 style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:28, fontWeight:900, color:'#f0f0f8', margin:'0 0 6px' }}>Subscriber Draw — Per Channel</h2>
-            <p style={{ color:'rgba(255,255,255,0.5)', fontSize:14, margin:0, maxWidth:520 }}>Each channel has its own private subscriber pool. Subscribers are added by the admin only — no double entries, no gaming the system. Watch the live draw or check past winners.</p>
-          </div>
-          <a href="Lottery.html" style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'12px 22px', background:'linear-gradient(135deg, #c084fc, #f472b6)', border:'none', borderRadius:14, color:'#0a0a15', fontSize:14, fontWeight:800, textDecoration:'none', boxShadow:'0 6px 22px rgba(192,132,252,0.35)' }}>🎰 Open Lottery →</a>
+          ))}
         </div>
 
-        {/* Stats row */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:12, marginBottom:18, position:'relative' }}>
-          <div style={{ padding:'14px 18px', background:'rgba(255,255,255,0.03)', borderRadius:12, border:'1px solid rgba(255,255,255,0.06)' }}>
-            <div style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:24, fontWeight:800, color:'#c084fc' }}>{totalSubs}</div>
-            <div style={{ fontSize:11, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:1 }}>Total subs</div>
+        {/* Videos for selected playlist */}
+        {selPl !== null && plVideos.length > 0 && (
+          <div style={{ marginTop:0 }}>
+            <h3 style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:13, fontWeight:600, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:1, marginBottom:12 }}>Videos</h3>
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              {plVideos.map((v, i) => (
+                <a key={i} href={v.url} target="_blank" rel="noreferrer" style={{ display:'flex', gap:12, alignItems:'center', padding:'10px 14px', background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:10, textDecoration:'none', transition:'background 0.15s' }}
+                  onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.05)'}
+                  onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.02)'}>
+                  <div style={{ width:24, height:24, borderRadius:6, background:'rgba(255,0,0,0.2)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}><SocialIcon icon="yt" size={11}/></div>
+                  <span style={{ fontSize:13, color:'#d0d0e8' }}>{v.title}</span>
+                </a>
+              ))}
+            </div>
           </div>
-          <div style={{ padding:'14px 18px', background:'rgba(255,255,255,0.03)', borderRadius:12, border:'1px solid rgba(255,255,255,0.06)' }}>
-            <div style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:24, fontWeight:800, color:'#22d3ee' }}>{activeChannels}</div>
-            <div style={{ fontSize:11, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:1 }}>Active channels</div>
-          </div>
-          <div style={{ padding:'14px 18px', background:'rgba(255,255,255,0.03)', borderRadius:12, border:'1px solid rgba(255,255,255,0.06)' }}>
-            <div style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:24, fontWeight:800, color:'#4ade80' }}>{history.length}</div>
-            <div style={{ fontSize:11, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:1 }}>Past draws</div>
-          </div>
-        </div>
-
-        {/* Latest winner + top channels */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, position:'relative' }}>
-          <div style={{ padding:'14px 18px', background:'rgba(74,222,128,0.06)', borderRadius:12, border:'1px solid rgba(74,222,128,0.18)' }}>
-            <div style={{ fontSize:11, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:1, marginBottom:8 }}>🏆 Latest Winner</div>
-            {lastDraw && lastDraw.winners?.[0] ? (
-              <>
-                <div style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:18, fontWeight:800, color:'#4ade80' }}>{lastDraw.winners[0].name}</div>
-                <div style={{ fontSize:12, color:'rgba(255,255,255,0.4)', marginTop:2 }}>{lastDraw.channel} · {lastDraw.date}</div>
-              </>
-            ) : (
-              <div style={{ fontSize:13, color:'rgba(255,255,255,0.4)' }}>No draws yet — first one is waiting to happen!</div>
-            )}
-          </div>
-          <div style={{ padding:'14px 18px', background:'rgba(255,255,255,0.03)', borderRadius:12, border:'1px solid rgba(255,255,255,0.06)' }}>
-            <div style={{ fontSize:11, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:1, marginBottom:8 }}>📊 Top channels (subs)</div>
-            {top5.length === 0 ? (
-              <div style={{ fontSize:13, color:'rgba(255,255,255,0.4)' }}>No subscriber pools loaded yet</div>
-            ) : (
-              <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-                {top5.map(c => (
-                  <div key={c.sno} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:12 }}>
-                    <span style={{ color:'rgba(255,255,255,0.7)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{c.name}</span>
-                    <span style={{ color:'#c084fc', fontWeight:700, marginLeft:8 }}>{c.count}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// --- Websites / Projects Section ---
-function ProjectsSection({ websites }) {
-  if (!websites || websites.length === 0) return null;
-  return (
-    <div style={{ maxWidth:1100, margin:'0 auto', padding:'24px 24px 56px' }}>
-      <div style={{ marginBottom:18 }}>
-        <div style={{ fontSize:12, fontWeight:600, letterSpacing:3, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', marginBottom:6 }}>Built by Pujiverse</div>
-        <h2 style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:28, fontWeight:900, color:'#f0f0f8', margin:0 }}>My Projects</h2>
-        <p style={{ color:'rgba(255,255,255,0.4)', fontSize:14, margin:'4px 0 0' }}>Live websites & apps deployed on Vercel and beyond</p>
-      </div>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:16 }}>
-        {websites.map(w => {
-          const accent = w.accent || '#22d3ee';
-          // Auto-generated thumbnail via image.thum.io (free, no key)
-          const cleanUrl = (w.url||'').replace(/^https?:\/\//,'');
-          const thumb = cleanUrl ? `https://image.thum.io/get/width/600/crop/450/${w.url}` : '';
-          return (
-            <a key={w.id} href={w.url} target="_blank" rel="noreferrer" style={{
-              display:'block', textDecoration:'none', background:'rgba(255,255,255,0.03)',
-              border:'1px solid rgba(255,255,255,0.08)', borderRadius:16, overflow:'hidden',
-              transition:'all 0.2s'
-            }}
-            onMouseEnter={e=>{ e.currentTarget.style.transform='translateY(-4px)'; e.currentTarget.style.border=`1px solid ${accent}55`; e.currentTarget.style.boxShadow=`0 12px 36px ${accent}22`; }}
-            onMouseLeave={e=>{ e.currentTarget.style.transform='translateY(0)'; e.currentTarget.style.border='1px solid rgba(255,255,255,0.08)'; e.currentTarget.style.boxShadow='none'; }}>
-              <div style={{ aspectRatio:'4/3', background:`linear-gradient(135deg, ${accent}33, rgba(0,0,0,0.4)), url(${thumb}) center/cover, ${accent}22`, position:'relative' }}>
-                <div style={{ position:'absolute', top:10, right:10, padding:'3px 10px', borderRadius:50, background:'rgba(74,222,128,0.18)', border:'1px solid rgba(74,222,128,0.35)', color:'#4ade80', fontSize:10, fontWeight:700, letterSpacing:1, textTransform:'uppercase', display:'inline-flex', alignItems:'center', gap:5 }}>
-                  <span style={{ width:5, height:5, borderRadius:'50%', background:'#4ade80', boxShadow:'0 0 6px #4ade80' }}/> Live
-                </div>
-              </div>
-              <div style={{ padding:'16px 18px' }}>
-                <div style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:16, fontWeight:700, color:'#f0f0f8', marginBottom:4 }}>{w.title}</div>
-                <div style={{ fontSize:12, color:'rgba(255,255,255,0.4)', marginBottom:10, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{cleanUrl}</div>
-                {w.description && <div style={{ fontSize:13, color:'rgba(255,255,255,0.55)', lineHeight:1.5, marginBottom:12 }}>{w.description}</div>}
-                {(w.tags||[]).length > 0 && (
-                  <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
-                    {(w.tags||[]).map((t,i) => (
-                      <span key={i} style={{ padding:'2px 9px', borderRadius:50, background:`${accent}18`, border:`1px solid ${accent}33`, color:accent, fontSize:11, fontWeight:600 }}>{t}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </a>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// --- Posts (Medium/Blogger/Patreon) Section ---
-function PostsSection({ posts }) {
-  if (!posts || posts.length === 0) return null;
-  const platformColor = (p) => ({
-    'Medium':'#02b875','Blogger':'#fb923c','Patreon':'#f96854','Substack':'#ff6719','Quora':'#b92b27','LinkedIn':'#0a66c2','Other':'#c084fc'
-  }[p] || '#c084fc');
-
-  return (
-    <div style={{ maxWidth:1100, margin:'0 auto', padding:'24px 24px 56px' }}>
-      <div style={{ marginBottom:18 }}>
-        <div style={{ fontSize:12, fontWeight:600, letterSpacing:3, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', marginBottom:6 }}>Reading & Writing</div>
-        <h2 style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:28, fontWeight:900, color:'#f0f0f8', margin:0 }}>Latest Posts</h2>
-        <p style={{ color:'rgba(255,255,255,0.4)', fontSize:14, margin:'4px 0 0' }}>Articles from Medium, Blogger, Patreon and more</p>
-      </div>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:16 }}>
-        {posts.map(p => {
-          const col = platformColor(p.platform);
-          return (
-            <a key={p.id} href={p.url} target="_blank" rel="noreferrer" style={{
-              display:'block', textDecoration:'none', background:'rgba(255,255,255,0.03)',
-              border:'1px solid rgba(255,255,255,0.08)', borderRadius:16, overflow:'hidden',
-              transition:'all 0.2s'
-            }}
-            onMouseEnter={e=>{ e.currentTarget.style.transform='translateY(-4px)'; e.currentTarget.style.border=`1px solid ${col}55`; }}
-            onMouseLeave={e=>{ e.currentTarget.style.transform='translateY(0)'; e.currentTarget.style.border='1px solid rgba(255,255,255,0.08)'; }}>
-              {p.cover && (
-                <div style={{ aspectRatio:'16/9', background:`url(${p.cover}) center/cover, ${col}22` }}/>
-              )}
-              <div style={{ padding:'16px 18px' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
-                  <span style={{ padding:'2px 10px', borderRadius:50, background:`${col}22`, border:`1px solid ${col}44`, color:col, fontSize:11, fontWeight:700 }}>{p.platform}</span>
-                  {p.date && <span style={{ fontSize:11, color:'rgba(255,255,255,0.35)' }}>{p.date}</span>}
-                </div>
-                <div style={{ fontFamily:"'Space Grotesk',sans-serif", fontSize:16, fontWeight:700, color:'#f0f0f8', marginBottom:6, lineHeight:1.35 }}>{p.title}</div>
-                {p.summary && <div style={{ fontSize:13, color:'rgba(255,255,255,0.55)', lineHeight:1.55, display:'-webkit-box', WebkitBoxOrient:'vertical', WebkitLineClamp:3, overflow:'hidden' }}>{p.summary}</div>}
-                <div style={{ marginTop:12, fontSize:12, color:col, fontWeight:600 }}>Read on {p.platform} →</div>
-              </div>
-            </a>
-          );
-        })}
+        )}
+        {selPl !== null && plVideos.length === 0 && (
+          <div style={{ marginTop:8, padding:'12px 16px', background:'rgba(255,255,255,0.02)', borderRadius:10, fontSize:13, color:'rgba(255,255,255,0.3)', textAlign:'center' }}>No videos added yet — add them from the admin panel</div>
+        )}
       </div>
     </div>
   );
@@ -395,7 +170,7 @@ function StarField() {
 }
 
 // --- Main Public View ---
-function PublicView({ onAdminClick, videos, websites = [], posts = [] }) {
+function PublicView({ onAdminClick, videos }) {
   const [search, setSearch] = React.useState('');
   const [cat, setCat] = React.useState('All');
   const [selectedCh, setSelectedCh] = React.useState(null);
@@ -491,7 +266,7 @@ function PublicView({ onAdminClick, videos, websites = [], posts = [] }) {
       </div>
 
       {/* CHANNEL GRID */}
-      <div style={{ maxWidth:1100, margin:'0 auto', padding:'0 24px 56px' }}>
+      <div style={{ maxWidth:1100, margin:'0 auto', padding:'0 24px 80px' }}>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:16 }}>
           {filtered.map(ch => <ChannelCard key={ch.sno} ch={ch} onClick={setSelectedCh} />)}
         </div>
@@ -502,15 +277,6 @@ function PublicView({ onAdminClick, videos, websites = [], posts = [] }) {
           </div>
         )}
       </div>
-
-      {/* PROJECTS / WEBSITES SECTION */}
-      <ProjectsSection websites={websites} />
-
-      {/* POSTS (BLOGS) SECTION */}
-      <PostsSection posts={posts} />
-
-      {/* LOTTERY WIDGET */}
-      <LotteryWidget />
 
       {/* FOOTER */}
       <div style={{ borderTop:'1px solid rgba(255,255,255,0.06)', padding:'32px 24px', textAlign:'center' }}>
@@ -535,4 +301,4 @@ function PublicView({ onAdminClick, videos, websites = [], posts = [] }) {
   );
 }
 
-Object.assign(window, { PublicView, SocialIcon, LotteryWidget, ProjectsSection, PostsSection });
+Object.assign(window, { PublicView, SocialIcon });
